@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+logs/dry/
+.agent_account
+.final_run_done
+.claude/
+.DS_Store
+docs/brief/*.pdf
+docs/brief/api_reference.md
+docs/brief/candidate_faq.md
