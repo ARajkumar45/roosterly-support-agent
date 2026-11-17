@@ -6,7 +6,7 @@ The Evidence column is filled by the auditor before the final run.
 | ID | Requirement | Enforced in | Proof |
 |---|---|---|---|
 | A01 | One command runs the agent from a fresh clone | `agent/run.py` | fresh clone in a temp folder, README commands as written |
-| A02 | Reads all open tickets: limit 10, follow next_cursor to null, ids collected first, deduplicated | `helpdesk.list_ticket_ids` | `test_pagination_collects_all`, `test_repeating_cursor_stops` |
+| A02 | Reads all open tickets: limit 10, follow next_cursor to null, ids collected first, deduplicated | `helpdesk.list_tickets` | `test_pagination_collects_all`, `test_repeating_cursor_stops` |
 | A03 | Exactly one decision per ticket: reply, handoff or close | `decide.decide`, run loop | `test_one_post_per_ticket` |
 | A04 | `language` posted is always nl, en or de, for all three actions | `helpdesk.build_body` | `test_other_language_handoff`, `test_empty_ticket_language` |
 | A05 | `category` is bug, billing, feature_request, question or other | body models | `test_schema_rejects_unknown_category` |

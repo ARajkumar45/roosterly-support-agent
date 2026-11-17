@@ -1,13 +1,16 @@
 """Client for the helpdesk API.
 
-Built in small steps. So far: both headers on every request, a limiter that
-keeps the request rate under the API's limit, and retries for 503 and 429.
+What it does: sends both headers on every request, keeps the request rate
+under the API's limit, retries on 503 and 429, reads all tickets page by page,
+and posts one decision per ticket without ever answering a ticket twice.
 """
 
 import random
 import time
+from typing import Literal
 
 import httpx
+from pydantic import BaseModel, ConfigDict, Field
 
 GAP_SECONDS = 0.30  # one request start every 0.30 s. The API allows 5 a second.
 MAX_TRIES = 5  # first try plus four retries, for any one request
@@ -38,6 +41,53 @@ class GaveUp(HelpdeskError):
     """Still failing after MAX_TRIES. The ticket is left open for a re-run."""
 
 
+class Body(BaseModel):
+    """Fields every decision has. Unknown fields or values are refused."""
+
+    model_config = ConfigDict(extra="forbid")
+    language: Literal["nl", "en", "de"]
+    category: Literal["bug", "billing", "feature_request", "question", "other"]
+    priority: Literal["P1", "P2", "P3", "P4"]
+    reason: str = Field(min_length=1, max_length=300)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
+class ReplyBody(Body):
+    draft_reply: str = Field(min_length=1)
+
+
+class HandoffBody(Body):
+    handoff_note: str = Field(min_length=1)
+
+
+class CloseBody(Body):
+    pass
+
+
+BODIES = {"reply": ReplyBody, "handoff": HandoffBody, "close": CloseBody}
+
+
+def build_body(action, fields):
+    """Check a decision and return exactly the fields the API wants for it.
+
+    The API only knows nl, en and de. A handoff in another language is sent
+    as en. A close with no language is sent as nl. A reply in another
+    language is refused here, because we could not have written it safely.
+    """
+    fields = dict(fields)
+    if fields.get("language") not in ("nl", "en", "de"):
+        if action == "handoff":
+            fields["language"] = "en"
+        elif action == "close":
+            fields["language"] = "nl"
+    return BODIES[action](**fields).model_dump(exclude_none=True)
+
+
+def is_handled(ticket):
+    """True if the helpdesk already holds a decision for this ticket."""
+    return ticket.get("handled") is not None
+
+
 class Limiter:
     """Makes every request start at least `gap` seconds after the one before."""
 
@@ -62,6 +112,7 @@ class Helpdesk:
         self.dry_run = dry_run
         self.limiter = limiter or Limiter()
         self.rng = rng  # random waits, so tests can make them fixed
+        self.known_ids = set()  # ids the helpdesk gave us in this run
         # These two headers go on every request. They are never logged.
         self.client = httpx.Client(
             base_url=url.rstrip("/"),
@@ -77,8 +128,13 @@ class Helpdesk:
             method, path, params=params, json=json, headers=extra_headers
         )
 
-    def request(self, method, path, params=None, json=None, extra_headers=None):
-        """send() plus retries. Returns the response, or raises a HelpdeskError."""
+    def request(self, method, path, params=None, json=None, extra_headers=None,
+                saved_already=None):
+        """send() plus retries. Returns the response, or raises a HelpdeskError.
+
+        saved_already is a check that runs before every retry. If it says yes,
+        the earlier try did get through, so we stop and return None.
+        """
         status = 0
         for attempt in range(MAX_TRIES):
             try:
@@ -98,6 +154,8 @@ class Helpdesk:
 
             if attempt < MAX_TRIES - 1:
                 self.limiter.sleep(wait)
+                if saved_already and saved_already():
+                    return None
         raise GaveUp(status, "retries_exhausted")
 
     def retry_after(self, response):
@@ -118,3 +176,52 @@ class Helpdesk:
         if status == 409:
             return AlreadyHandled(status, "already_handled")
         return TicketError(status, "request_rejected")
+
+    def status(self, name=""):
+        """Mode and ticket counts. The optional name header is sent only here."""
+        extra = {"X-Candidate-Name": name} if name else None
+        return self.request("GET", "/status", extra_headers=extra).json()
+
+    def examples(self):
+        return self.request("GET", "/examples").json()["examples"]
+
+    def get_ticket(self, ticket_id):
+        return self.request("GET", f"/tickets/{ticket_id}").json()
+
+    def list_tickets(self, status="open"):
+        """All tickets, page by page, oldest first. Each ticket appears once."""
+        tickets, cursors, cursor = {}, set(), None
+        for _ in range(50):  # hard stop, in case the paging never ends
+            params = {"limit": 10, "status": status}
+            if cursor:
+                params["cursor"] = cursor
+            page = self.request("GET", "/tickets", params=params).json()
+            for ticket in page["tickets"]:
+                tickets.setdefault(ticket["id"], ticket)
+            cursor = page.get("next_cursor")
+            if not cursor or cursor in cursors:  # last page, or a loop
+                break
+            cursors.add(cursor)
+        self.known_ids.update(tickets)
+        return sorted(tickets.values(), key=lambda t: t.get("received_at") or "")
+
+    def post_action(self, ticket_id, action, fields):
+        """Post one decision. Returns how it ended. Never answers twice."""
+        if self.dry_run:
+            raise RuntimeError("dry-run never posts")
+        if ticket_id not in self.known_ids:
+            raise ValueError("this id did not come from the ticket list in this run")
+        body = build_body(action, fields)
+
+        def saved_already():
+            # If this lookup itself fails, GaveUp is raised and we do not post again.
+            return is_handled(self.get_ticket(ticket_id))
+
+        try:
+            response = self.request(
+                "POST", f"/tickets/{ticket_id}/{action}", json=body,
+                saved_already=saved_already,
+            )
+        except AlreadyHandled:
+            return "already_handled_409"
+        return "posted" if response is not None else "posted_confirmed_by_get"

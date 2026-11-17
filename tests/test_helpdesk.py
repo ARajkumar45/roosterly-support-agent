@@ -1,24 +1,26 @@
 import httpx
 import pytest
+from pydantic import ValidationError
 
 from agent.helpdesk import (
     AlreadyHandled,
     GaveUp,
     Helpdesk,
     Limiter,
+    build_body,
     StopRun,
     TicketError,
 )
 
 
-def make_client(handler, clock):
+def make_client(handler, clock, dry_run=False):
     """A Helpdesk that talks to a fake server (handler) on a fake clock."""
     limiter = Limiter(clock=clock.time, sleep=clock.sleep)
     return Helpdesk(
         url="https://fake.test/helpdesk",
         key="fake-key",
         email="tester@example.com",
-        dry_run=False,
+        dry_run=dry_run,
         transport=httpx.MockTransport(handler),
         limiter=limiter,
         rng=lambda low, high: high,  # always the longest wait, so tests are fixed
@@ -137,3 +139,141 @@ def test_422_leaves_open(clock):
     with pytest.raises(TicketError):
         make_client(handler, clock).request("POST", "/tickets/abc/reply", json={})
     assert len(calls) == 1
+
+
+# ---- reading tickets page by page ----
+
+def ticket(ticket_id, handled=None):
+    return {"id": ticket_id, "received_at": f"2026-01-01T00:00:{ticket_id[-2:]}",
+            "subject": "s", "body": "b", "handled": handled}
+
+
+def page(ids, next_cursor):
+    return httpx.Response(200, json={"tickets": [ticket(i) for i in ids],
+                                     "next_cursor": next_cursor})
+
+
+def test_pagination_collects_all(clock):
+    handler, calls = answers(
+        page(["a03", "a01"], "a01"),
+        httpx.Response(503),            # a failed page is asked for again
+        page(["a02", "a01"], None),     # a01 comes twice, kept once
+    )
+    tickets = make_client(handler, clock).list_tickets()
+    assert [t["id"] for t in tickets] == ["a01", "a02", "a03"]  # oldest first
+    assert calls[1].url.params["cursor"] == "a01"
+    assert calls[2].url.params["cursor"] == "a01"
+
+
+def test_repeating_cursor_stops(clock):
+    handler, calls = answers(page(["a01"], "x"), page(["a02"], "x"), page(["a03"], "x"))
+    tickets = make_client(handler, clock).list_tickets()
+    assert len(calls) == 2  # the same cursor twice means a loop, so stop
+    assert len(tickets) == 2
+
+
+# ---- posting a decision ----
+
+HANDOFF = {"language": "nl", "category": "billing", "priority": "P2",
+           "reason": "Refund request.", "handoff_note": "Customer wants a refund."}
+
+
+def client_with_ticket(handler, clock, dry_run=False):
+    helpdesk = make_client(handler, clock, dry_run)
+    helpdesk.known_ids.add("a01")
+    return helpdesk
+
+
+def test_one_post_per_ticket(clock):
+    handler, calls = answers(httpx.Response(200, json={}))
+    outcome = client_with_ticket(handler, clock).post_action("a01", "handoff", HANDOFF)
+    assert outcome == "posted"
+    assert [c.method for c in calls] == ["POST"]
+
+
+def test_timeout_after_save_no_second_post(clock):
+    """The post is saved but the OK is lost. We must not post again."""
+    calls = []
+
+    def handler(request):
+        calls.append(request.method)
+        if request.method == "POST":
+            raise httpx.ReadTimeout("slow", request=request)
+        return httpx.Response(200, json=ticket("a01", handled={"action": "handoff"}))
+
+    outcome = client_with_ticket(handler, clock).post_action("a01", "handoff", HANDOFF)
+    assert outcome == "posted_confirmed_by_get"
+    assert calls == ["POST", "GET"]
+
+
+def test_503_checks_then_posts_again(clock):
+    """503 means nothing was saved. The check agrees, so we post again."""
+    handler, calls = answers(
+        httpx.Response(503),
+        httpx.Response(200, json=ticket("a01")),
+        httpx.Response(200, json={}),
+    )
+    outcome = client_with_ticket(handler, clock).post_action("a01", "handoff", HANDOFF)
+    assert outcome == "posted"
+    assert [c.method for c in calls] == ["POST", "GET", "POST"]
+
+
+def test_check_fails_no_second_post(clock):
+    """If we cannot find out whether it was saved, we do not post again."""
+    handler, calls = answers(httpx.Response(503), *[httpx.Response(503)] * 5)
+    with pytest.raises(GaveUp):
+        client_with_ticket(handler, clock).post_action("a01", "handoff", HANDOFF)
+    assert [c.method for c in calls].count("POST") == 1
+
+
+def test_409_is_counted_not_retried(clock):
+    handler, calls = answers(httpx.Response(409))
+    outcome = client_with_ticket(handler, clock).post_action("a01", "handoff", HANDOFF)
+    assert outcome == "already_handled_409"
+    assert len(calls) == 1
+
+
+def test_dry_run_never_posts(clock):
+    handler, calls = answers()
+    with pytest.raises(RuntimeError):
+        client_with_ticket(handler, clock, dry_run=True).post_action("a01", "handoff", HANDOFF)
+    assert calls == []
+
+
+def test_example_id_refused(clock):
+    handler, calls = answers()
+    with pytest.raises(ValueError):
+        make_client(handler, clock).post_action("not-listed", "handoff", HANDOFF)
+    assert calls == []
+
+
+# ---- the body we send ----
+
+BASE = {"language": "nl", "category": "question", "priority": "P4", "reason": "Why."}
+
+
+def test_body_fields_per_action():
+    reply = build_body("reply", {**BASE, "draft_reply": "Hoi", "confidence": 0.9})
+    assert set(reply) == {"language", "category", "priority", "reason", "draft_reply", "confidence"}
+    close = build_body("close", BASE)
+    assert set(close) == {"language", "category", "priority", "reason"}
+    with pytest.raises(ValidationError):  # a handoff needs a note
+        build_body("handoff", BASE)
+    with pytest.raises(ValidationError):  # a close takes no reply text
+        build_body("close", {**BASE, "draft_reply": "Hoi"})
+
+
+def test_other_language_handoff():
+    body = build_body("handoff", {**BASE, "language": "other", "handoff_note": "French ticket."})
+    assert body["language"] == "en"
+    with pytest.raises(ValidationError):  # never reply in a language we cannot check
+        build_body("reply", {**BASE, "language": "other", "draft_reply": "Bonjour"})
+
+
+def test_empty_ticket_language():
+    assert build_body("close", {**BASE, "language": None})["language"] == "nl"
+
+
+def test_schema_rejects_unknown_category():
+    with pytest.raises(ValidationError):
+        build_body("close", {**BASE, "category": "complaint"})
