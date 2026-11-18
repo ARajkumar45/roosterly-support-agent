@@ -158,8 +158,20 @@ def plain(text):
 # ---- reply checks ----
 
 
-def reply_checks(out, faq):
-    """Each check is True when the draft passes it."""
+# An amount of money or a percentage, like "€4", "4 euro" or "40%".
+MONEY = re.compile(
+    r"[€$£]\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*(?:€|euro|eur|procent|percent|prozent|%)",
+    re.IGNORECASE,
+)
+
+
+def reply_checks(out, faq, ticket_text=""):
+    """Each check is True when the draft passes it.
+
+    ticket_text is what the customer wrote. A reply may repeat the customer's own
+    numbers ("your iOS 15"), but never as a price: every amount of money or
+    percentage must come from the help centre.
+    """
     draft = out.draft_reply or ""
     # Only entries that answer a covered question AND were quoted count as sources.
     # Quoting an extra entry must not make its prices and links allowed.
@@ -181,7 +193,8 @@ def reply_checks(out, faq):
         urls(draft) <= urls(cited)
         and schemes <= urls(cited)
         and not odd_link
-        and numbers(draft) <= numbers(cited)
+        and numbers(draft) <= numbers(cited) | numbers(ticket_text)
+        and numbers(" ".join(MONEY.findall(draft))) <= numbers(cited)
         and all(squash(label) in cited for label in QUOTED.findall(draft))
         and all(f"{a} → {b}" in cited for a, b in ARROW_STEP.findall(flat))
         and all(squash(label) in cited for label in LABEL_AFTER.findall(draft))
@@ -427,7 +440,7 @@ def decide(ticket, guard, out, faq, threshold):
             handoff_reason="model",
             faq_ids=faq_ids,
         )
-    checks = reply_checks(out, faq)
+    checks = reply_checks(out, faq, text)
     failed = [name for name, ok in checks.items() if not ok]
     if failed:
         decision = handoff(

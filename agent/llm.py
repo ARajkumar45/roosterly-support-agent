@@ -34,10 +34,15 @@ class Answer:
     complete: bool = True  # False when the model refused or was cut off
 
 
+CLAUDE_URL = "https://api.anthropic.com"
+
+
 def claude(settings, model, system, user):
     """One call to a Claude model. The key comes from LLM_API_KEY in the environment."""
     # max_retries=0: ask() below does the retrying, in one place.
-    client = anthropic.Anthropic(api_key=settings.llm_key, max_retries=0, timeout=60.0)
+    # base_url is fixed here, so a stray ANTHROPIC_BASE_URL in the shell cannot send the key elsewhere.
+    client = anthropic.Anthropic(api_key=settings.llm_key, base_url=CLAUDE_URL,
+                                 max_retries=0, timeout=60.0)
     response = client.messages.create(
         model=model, max_tokens=settings.max_tokens, system=system,
         messages=[{"role": "user", "content": user}],
@@ -94,8 +99,11 @@ P1 many users blocked right now, or a security or legal risk.
 P2 one customer blocked, or money or the contract is involved (a charge, refund or contract is at stake).
 P3 something is wrong or unclear, but there is a workaround.
 P4 no urgency: how-to questions (also about invoices, prices and plans), ideas, cosmetic issues.
+When the help centre gives the customer the cause, the fix or a workaround, a problem is P3 and a how-to is P4.
+P2 is for a blocked customer the help centre cannot unblock, or when money or the contract is at stake.
 
 Category: bug, billing, feature_request, question, other.
+billing is anything about invoices, prices, payments or plans, also a how-to about them. question is any other how-to.
 Action: reply (the help centre fully answers every question), handoff (anything else), close (only spam or an empty ticket).
 
 Form fields:
@@ -108,6 +116,11 @@ Form fields:
 - already_tried: true when the customer says they already did what the help centre describes and it did not work.
 - summary: English, at most 25 words, what the customer wants.
 - sub_questions: 1 to 5 items. Each: text (English), covered (does the help centre fully answer it?), faq_id or null.
+  covered is true when the help centre gives the steps, or states a requirement or limit that explains the
+  customer's problem, or says how customers do this themselves. The reply then gives that information.
+  covered is false when someone at Roosterly must look into the account or do something for the customer.
+  An idea or feature request is covered when the help centre says how ideas are handled: thank the
+  customer and give that information, without saying whether or when it will be built.
   A request to correct an invoice that was already sent is not covered.
 - faq_quotes: for each help-centre entry you rely on, faq_id and one exact quote of 3 to 25 words copied from it.
 - draft_reply: the reply in the customer's language, or null when the action is not reply.
@@ -131,7 +144,17 @@ Help centre:
 
 VIEW_PROMPT = (
     "Translate the customer-support reply below into English. Translate only. Keep every "
-    "number, link and menu name exactly as written. Answer with the translation only."
+    "number, link, menu name, product name and other proper name exactly as written, "
+    "untranslated. Answer with the translation only."
+)
+
+
+SPAM_PROMPT = (
+    "You check one message that arrived in a company's support inbox. Answer with one word. "
+    "Answer SPAM only when it is unsolicited advertising, a scam or mass mail, with no request "
+    "about the company's product. Answer CUSTOMER when there is any chance that a real customer "
+    "wrote it, or it asks anything about an account, the app, an invoice or data. "
+    "When in doubt, answer CUSTOMER."
 )
 
 
@@ -218,3 +241,15 @@ def english_view(settings, draft, sleep=None):
     answer = ask(settings, settings.view_model, VIEW_PROMPT, redact(draft), sleep)
     text = answer.text.strip() if answer.complete else ""
     return redact(text), answer.tokens_in, answer.tokens_out
+
+
+def second_spam_check(settings, ticket, sleep=None):
+    """Ask again, in a separate call with a narrow question, if a ticket is spam.
+
+    Used only after the first call already said 'close'. Returns (is_spam, tokens_in, tokens_out).
+    Anything but a clear SPAM counts as no.
+    """
+    user, _ = build_user_message(ticket)
+    answer = ask(settings, settings.model, SPAM_PROMPT, user, sleep)
+    is_spam = answer.complete and answer.text.strip().upper().strip(".") == "SPAM"
+    return is_spam, answer.tokens_in, answer.tokens_out

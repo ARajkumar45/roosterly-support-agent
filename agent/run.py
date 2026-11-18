@@ -59,6 +59,14 @@ def triage(ticket, settings, faq):
     if settings.provider:
         out, tokens_in, tokens_out, lookalike = llm.fill_form(settings, faq, ticket)
         found.injection = found.injection or lookalike
+        # Close needs two signals. When the code has no spam signal of its own, a second,
+        # separate model call may confirm spam. Never when any guard hint fired.
+        clean = not (found.tier1 or found.tier2 or found.injection or found.close_signal)
+        if out is not None and out.action == "close" and clean:
+            is_spam, more_in, more_out = llm.second_spam_check(settings, ticket)
+            tokens_in, tokens_out = tokens_in + more_in, tokens_out + more_out
+            if is_spam:
+                found.close_signal = "spam (confirmed by a second check)"
     decision = decide(ticket, found, out, faq, settings.threshold)
 
     view = None

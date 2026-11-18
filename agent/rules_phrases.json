@@ -18,7 +18,11 @@
         "Geld zurück": "money back (German)",
         "refund": "refund",
         "money back": "money back",
-        "dispute the charge": "dispute the charge"
+        "dispute the charge": "dispute the charge",
+        "dubbel betaald": "paid twice",
+        "charged twice": "charged twice",
+        "double charged": "double charged",
+        "doppelt abgebucht": "debited twice"
       }
     },
     "cancel": {
@@ -41,7 +45,12 @@
         "Vertrag kündigen": "cancel the contract (German)",
         "Vertrag beenden": "end the contract (German)",
         "cancel my subscription": "cancel my subscription",
-        "cancel our account": "cancel our account"
+        "cancel our account": "cancel our account",
+        "wil opzeggen": "want to cancel",
+        "willen opzeggen": "want to cancel (plural)",
+        "want to cancel": "want to cancel",
+        "cancel my account": "cancel my account",
+        "kündigen": "to cancel"
       }
     },
     "gdpr": {
@@ -51,7 +60,13 @@
         "gegevens verwijderen": "delete data",
         "inzageverzoek": "request to see my data",
         "DSGVO": "GDPR (German name)",
-        "delete my data": "delete my data"
+        "delete my data": "delete my data",
+        "mijn gegevens verwijderen": "delete my data",
+        "recht op inzage": "right of access",
+        "recht op vergetelheid": "right to be forgotten",
+        "delete my personal data": "delete my personal data",
+        "right to be forgotten": "right to be forgotten",
+        "meine Daten löschen": "delete my data"
       }
     },
     "security": {
@@ -63,7 +78,9 @@
         "onbekende inlog": "unknown login",
         "verdachte mail": "suspicious email",
         "data breach": "data breach",
-        "hacked": "hacked"
+        "hacked": "hacked",
+        "account is overgenomen": "account was taken over",
+        "unauthorized access": "unauthorized access"
       }
     },
     "legal": {
@@ -89,7 +106,11 @@
         "andere aanbieder": "another provider",
         "iets anders zoeken": "look for something else",
         "we stappen over": "we are switching",
-        "switch to another provider": "switch to another provider"
+        "switch to another provider": "switch to another provider",
+        "gaan overstappen": "going to switch",
+        "stappen we over": "we switch",
+        "another provider": "another provider",
+        "Anbieter wechseln": "switch provider"
       }
     }
   },
@@ -134,7 +155,6 @@
   },
   "already_tried": {
     "al geprobeerd": "already tried",
-    "werkt niet": "does not work",
     "heb ik al gedaan": "I already did that",
     "already tried": "already tried",
     "schon versucht": "already tried (German)"

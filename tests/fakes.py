@@ -92,10 +92,11 @@ def covered_form(faq, **changes):
     return {**base, **changes}
 
 
-def fake_model(monkeypatch, answer_for):
+def fake_model(monkeypatch, answer_for, spam_answer="CUSTOMER"):
     """Install a fake provider. answer_for(user_message) returns a form dict, a string or an Answer.
 
     The English back-translation call just returns the draft, so its numbers and links match.
+    The second spam check answers spam_answer.
     """
     calls = []
 
@@ -103,6 +104,9 @@ def fake_model(monkeypatch, answer_for):
         calls.append(user)
         if system == llm.VIEW_PROMPT:
             return llm.Answer(user, 10, 10)
+        if system == llm.SPAM_PROMPT:
+            calls.append("second spam check")
+            return llm.Answer(spam_answer, 10, 1)
         answer = answer_for(user)
         if isinstance(answer, llm.Answer):
             return answer
