@@ -24,13 +24,44 @@ Items marked (assumption) are my choices, not Nordavo rules.
 | Category when the model step failed | Refund, cancel, contract = billing. GDPR, legal, churn = other. Security = other | assumption, check examples |
 | Billing how-to | P4 | assumption, check examples |
 | Sign-off in replies | "Team Roosterly" | assumption |
-| Confidence threshold | 0.75 to start | assumption, tune in Phase 6 |
+| Confidence threshold | 0.75 | assumption; no example was decided by it |
 | Request rate | One request per 0.30 s (the API allows 5 a second) | choice |
 | Nordavo sees every request (409s, rate) | Treated as true | assumption, not stated in the pack |
 
 ## Differences found in the 10 examples
 
-(filled in Phase 0 after reading them with Raj)
+Found by running the eval and reading the misses. These are label styles, turned into
+general rules in the prompt. No example text is in the code or the prompt.
+
+- A how-to about invoices, prices or plans is labelled `billing`, not `question`.
+- A problem that the help centre explains (a requirement, a self-service step) gets a reply,
+  and is P3 for a problem or P4 for a how-to. It is not P2.
+- A feature request gets a reply that points to the help-centre entry on ideas.
+- Unsolicited advertising is closed as spam.
+
+## The fix and what came with it
+
+- Coverage rule in the prompt (see above). Before: action 7/10. After: 9/10 in three runs.
+- A reply may repeat a number the customer wrote, but every amount of money or percentage
+  must come from the help centre.
+- Close still needs two signals. The second may be a separate, narrow model call that
+  answers SPAM or CUSTOMER. It is skipped when any guard hint fired. Risk I accept: both
+  calls come from the same model, so they are not fully independent.
+- More must-handoff wordings were added to the code list. Nothing was removed from it:
+  a false handoff is cheap, a missed one is not.
+- "It does not work" alone no longer counts as "already tried". The model's field decides.
+- The model address is fixed in code, so a shell variable cannot send the key elsewhere.
+- The model does not accept temperature 0. Answers can differ between runs, so the eval
+  can run several times (`--repeat`) and reports which tickets changed.
+
+## Known limits
+
+- The must-handoff word list will miss new wordings. The model is the second net.
+- The English check sometimes stops a good reply (a translated name looks unknown).
+  That costs a handoff, never a wrong reply.
+- 10 examples and 16 own tickets are a small sample. My own labels were drafted with
+  Claude Code and reviewed by me, not by a Dutch speaker.
+- Code outside tests is about 1,700 lines, more than I planned.
 
 ## Questions to Nordavo
 
