@@ -35,14 +35,20 @@ def strip_html(text):
     return html.unescape(HTML_TAG.sub(" ", text or ""))
 
 
+def fold(text):
+    """Text without accents, so "beëindigen" and "beeindigen" are the same word."""
+    return "".join(c for c in unicodedata.normalize("NFKD", text or "") if not unicodedata.combining(c))
+
+
 def phrase_pattern(phrase):
     """A whole-phrase match. 'contract' must not match inside 'contracturen'."""
-    words = [re.escape(word) for word in phrase.split()]
+    words = [re.escape(word) for word in fold(phrase).split()]
     return re.compile(r"(?<!\w)" + r"\s+".join(words) + r"(?!\w)", re.IGNORECASE)
 
 
 def found(phrases, text):
-    """The phrases from the list that appear in the text."""
+    """The phrases from the list that appear in the text, with or without accents."""
+    text = fold(text)
     return [p for p in phrases if phrase_pattern(p).search(text)]
 
 
@@ -64,13 +70,64 @@ SPLIT_CANCEL_END = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
+# A cancel word that also fits an employee ("een medewerker heeft opgezegd") only counts
+# as a customer cancelling when the subscription or account is named in the same sentence.
+CANCEL_OBJECT = r"(?:abonnement|account|roosterly\S*|licentie|pakket|subscription|abo|vertrag)"
+CANCEL_WORD = r"(?:opzeggen|opgezegd|opzegging|kundigen|kundige|gekundigt|kundigung)"
+OBJECT_CANCEL = re.compile(
+    rf"(?<!\w){CANCEL_OBJECT}[^.!?\n]{{0,80}}?(?<!\w){CANCEL_WORD}(?!\w)"
+    rf"|(?<!\w){CANCEL_WORD}[^.!?\n]{{0,80}}?(?<!\w){CANCEL_OBJECT}(?!\w)",
+    re.IGNORECASE,
+)
+
 # Someone else logged in: "iemand heeft op ons account ingelogd", "someone logged in", "jemand hat sich angemeldet".
-# Only the past tense counts, so "ik kan niet inloggen, kan iemand helpen?" does not match.
+# Only within one sentence and without "not", so "Can someone help? I am not logged in." does not match.
 STRANGER = r"(?:iemand|someone|somebody|jemand|onbekend\w*|unknown|fremd\w*|vreemd\w*)"
 LOGGED_IN = r"(?:ingelogd|logged\s+in(?:to)?|eingeloggt|angemeldet)"
+SAME_SENTENCE = r"[^\w.!?\n]+(?:\w+[^\w.!?\n]+)"
 STRANGER_LOGIN = re.compile(
-    rf"(?<!\w){STRANGER}\W+(?:\w+\W+){{0,8}}?{LOGGED_IN}(?!\w)"
-    rf"|(?<!\w){LOGGED_IN}\W+(?:\w+\W+){{0,4}}?(?:door|by|von)\s+{STRANGER}(?!\w)",
+    rf"(?<!\w){STRANGER}{SAME_SENTENCE}{{0,8}}?{LOGGED_IN}(?!\w)"
+    rf"|(?<!\w){LOGGED_IN}{SAME_SENTENCE}{{0,4}}?(?:door|by|von)\s+(?:een\s+|a\s+|an\s+|einen\s+|einem\s+)?"
+    rf"{STRANGER}(?!\w)"
+    # "ingelogd vanaf een apparaat dat wij niet kennen", "logged into from a device we do not recognise"
+    rf"|(?<!\w){LOGGED_IN}{SAME_SENTENCE}{{0,10}}?(?:niet|not|nicht)\s+(?:\w+\s+)?"
+    rf"(?:kennen|herkennen|know|recogni[sz]e|kenne|erkennen)(?!\w)",
+    re.IGNORECASE,
+)
+# "niet ingelogd", "not logged in": the customer is logged out, nobody broke in.
+NOT_LOGGED_IN = re.compile(rf"(?<!\w)(?:niet|not|nicht|nooit|never)\s+{LOGGED_IN}", re.IGNORECASE)
+
+
+def stranger_logged_in(text):
+    return any(not NOT_LOGGED_IN.search(m.group(0)) for m in STRANGER_LOGIN.finditer(text))
+
+
+# "Hoe kan ik opzeggen?", "Ich möchte kündigen": the writer cancels. Not when the sentence
+# is about staff ("ik wil weten hoe een medewerker die heeft opgezegd ...").
+FIRST_PERSON_CANCEL = re.compile(
+    rf"(?<!\w)(?:ik|we|wij|ich|wir)[^\w.!?\n]+(?:\w+[^\w.!?\n]+){{0,6}}?{CANCEL_WORD}(?!\w)",
+    re.IGNORECASE,
+)
+STAFF = re.compile(r"(?<!\w)(?:medewerker\w*|werknemer\w*|collega\w*|personeel|employee\w*|"
+                   r"staff|mitarbeiter\w*|kollege\w*)(?!\w)", re.IGNORECASE)
+
+
+def customer_cancels(folded):
+    """A cancel word that names the subscription, or a writer who cancels (not about staff)."""
+    if OBJECT_CANCEL.search(folded):
+        return True
+    return any(not STAFF.search(m.group(0)) for m in FIRST_PERSON_CANCEL.finditer(folded))
+
+
+# Text that tries to instruct the agent, in its common forms. Fixed phrases are in
+# rules_phrases.json; these patterns catch the variations ("all previous", "the above").
+INJECTION = re.compile(
+    r"(?<!\w)(?:ignore|disregard|forget|negeer|vergeet|ignoreer|ignoriere|vergiss)\W+"
+    r"(?:\w+\W+){0,4}?(?:instructions?|instructies?|regels|rules|prompt|anweisungen|befehle)(?!\w)"
+    r"|(?<!\w)(?:systeem|system)\s*(?:bericht|message|nachricht|melding|prompt)(?!\w)"
+    r"|(?<!\w)(?:note|message|bericht|notitie|hinweis|nachricht)\s+(?:for|to|voor|aan|fur|an)\s+"
+    r"(?:the\s+|de\s+|het\s+|die\s+|den\s+)?(?:ai|ki|a\.i\.)?[\s-]*"
+    r"(?:assistant|assistent|chatbot|bot|agent|model)(?!\w)",
     re.IGNORECASE,
 )
 
@@ -108,13 +165,16 @@ def guard(subject, body):
         for topic, entry in PHRASES["tier1"].items()
         if found(entry["phrases"], text)
     ]
-    if "cancel" not in tier1 and (SPLIT_CANCEL.search(text) or SPLIT_CANCEL_END.search(text)):
+    folded = fold(text)
+    cancels = SPLIT_CANCEL.search(text) or SPLIT_CANCEL_END.search(text) or customer_cancels(folded)
+    if "cancel" not in tier1 and cancels:
         tier1.append("cancel")
-    if "security" not in tier1 and STRANGER_LOGIN.search(text):
+    if "security" not in tier1 and stranger_logged_in(text):
         tier1.append("security")
 
     injection = bool(
-        found(PHRASES["injection"], text) or TAG_LOOKALIKE.search(html.unescape(raw))
+        found(PHRASES["injection"], text) or INJECTION.search(folded)
+        or TAG_LOOKALIKE.search(html.unescape(raw))
     )
     result = Guard(tier1, found(PHRASES["tier2"], text), injection)
     result.too_long = len(strip_html(raw)) > MAX_TICKET_CHARS
@@ -135,6 +195,9 @@ IBAN_SPACED = re.compile(
 )
 # After the first four characters an IBAN is a short bank code and then many digits.
 IBAN_SHAPE = re.compile(r"[A-Z]{2}\d{2}[A-Z0-9]{0,6}\d{8,}")
+# Glued to a word ("rekeningNL91ABNA..."): a capital country code right after a small letter.
+# Normal text never looks like this, but it only counts when the IBAN checksum is right.
+IBAN_GLUED = re.compile(rf"(?<=[a-z])[A-Z]{{2}}\d{{2}}(?:{SEP}[A-Z0-9]){{11,30}}")
 # 13 to 19 digits, with optional separators between them.
 CARD = re.compile(rf"(?<!\d)\d(?:{SEP}\d){{12,18}}(?!\d)")
 REDACTED = "[redacted]"
@@ -173,9 +236,11 @@ def card_end(text):
     shaped = (all(size == 4 for size in sizes[:-1]) and sizes[-1] <= 4) or sizes == [4, 6, 5]
     if len(sizes) == 1 or (shaped and len(separators) == 1):
         return len(text)
-    # Typed with mixed separators ("4111 1111-1111 1111"): still a card when the digits pass
-    # the Luhn check that every real card number passes. A date or phone number rarely does.
-    return len(text) if shaped and luhn_ok(re.sub(r"\D", "", text)) else None
+    # Any other grouping or mixed separators (blocks of 4, 8 and 4 digits): still a card when the
+    # digits pass the Luhn check that every real card number passes. A date or phone number
+    # rarely does, and hiding one by mistake is the safe error.
+    # Blocks shorter than 4 digits (dates like 01-02-2026) never count here.
+    return len(text) if min(sizes) >= 4 and luhn_ok(re.sub(r"\D", "", text)) else None
 
 
 def luhn_ok(digits):
@@ -216,6 +281,7 @@ def redact(text):
     text = prepare(text)
     text = hide(IBAN, text, lambda found: iban_end(found, need_checksum=False))
     text = hide(IBAN_SPACED, text, lambda found: iban_end(found, need_checksum=True))
+    text = hide(IBAN_GLUED, text, lambda found: iban_end(found, need_checksum=True))
     return hide(CARD, text, card_end)
 
 

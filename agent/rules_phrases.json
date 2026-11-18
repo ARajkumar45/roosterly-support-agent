@@ -27,7 +27,9 @@
         "billed twice": "billed twice",
         "overcharged": "charged too much",
         "te veel betaald": "paid too much",
-        "zu viel bezahlt": "paid too much"
+        "zu viel bezahlt": "paid too much",
+        "Erstattung": "refund (German)",
+        "erstatten": "to refund (German)"
       }
     },
     "cancel": {
@@ -41,12 +43,9 @@
         "abonnement stopzetten": "stop the subscription",
         "abonnement beëindigen": "end the subscription",
         "opzegtermijn": "notice period",
-        "opgezegd": "have cancelled",
-        "contract wijzigen": "change the contract",
         "downgraden": "downgrade",
         "terug naar Basis": "back to the Basis plan",
         "definitief sluiten": "close for good",
-        "Kündigung": "cancellation (German)",
         "Vertrag kündigen": "cancel the contract (German)",
         "Vertrag beenden": "end the contract (German)",
         "cancel my subscription": "cancel my subscription",
@@ -55,16 +54,15 @@
         "willen opzeggen": "want to cancel (plural)",
         "want to cancel": "want to cancel",
         "cancel my account": "cancel my account",
-        "kündigen": "to cancel",
-        "opzeggen": "to cancel",
-        "opzegging": "cancellation",
-        "kündige": "I cancel",
         "cancel our subscription": "cancel our subscription",
         "cancel the subscription": "cancel the subscription",
         "account verwijderen": "delete the account",
         "verwijder mijn account": "delete my account",
         "delete my account": "delete my account",
-        "delete our account": "delete our account"
+        "delete our account": "delete our account",
+        "terminate our contract": "terminate our contract",
+        "terminate the contract": "terminate the contract",
+        "terminate our subscription": "terminate our subscription"
       }
     },
     "gdpr": {
@@ -80,7 +78,13 @@
         "recht op vergetelheid": "right to be forgotten",
         "delete my personal data": "delete my personal data",
         "right to be forgotten": "right to be forgotten",
-        "meine Daten löschen": "delete my data"
+        "meine Daten löschen": "delete my data",
+        "copy of all personal data": "copy of all personal data",
+        "copy of my personal data": "copy of my personal data",
+        "kopie van mijn gegevens": "copy of my data",
+        "kopie van al mijn gegevens": "copy of all my data",
+        "AVG-verzoek": "GDPR request (Dutch)",
+        "GDPR request": "GDPR request"
       }
     },
     "security": {
@@ -98,7 +102,11 @@
         "logged into my account": "someone logged into my account",
         "logged into our account": "someone logged into our account",
         "ingelogd op mijn account": "logged into my account",
-        "ingelogd op ons account": "logged into our account"
+        "ingelogd op ons account": "logged into our account",
+        "data leak": "data leak",
+        "gelekt": "leaked",
+        "leaked": "leaked",
+        "Datenleck": "data leak (German)"
       }
     },
     "legal": {
@@ -121,7 +129,10 @@
         "attorney": "attorney",
         "Rechtsanwalt": "lawyer",
         "sue you": "sue you",
-        "verklagen": "to sue"
+        "verklagen": "to sue",
+        "lawsuit": "lawsuit",
+        "rechtbank": "court",
+        "Klage": "lawsuit (German)"
       }
     },
     "churn": {
@@ -154,7 +165,14 @@
     "overstappen naar": "switch to",
     "zonder dat ik": "without me (doing something)",
     "niet aangevraagd": "not requested",
-    "export van mijn gegevens": "export of my data"
+    "export van mijn gegevens": "export of my data",
+    "opgezegd": "have cancelled",
+    "opzeggen": "to cancel",
+    "opzegging": "cancellation",
+    "contract wijzigen": "change the contract",
+    "kündigen": "to cancel",
+    "kündige": "I cancel",
+    "Kündigung": "cancellation (German)"
   },
   "injection": {
     "negeer alle instructies": "ignore all instructions",
@@ -252,15 +270,5 @@
     "sechzig": 60,
     "hundert": 100
   },
-  "signatures": [
-    "Verstuurd vanaf mijn",
-    "Sent from my",
-    "Gesendet von meinem",
-    "Verzonden vanaf mijn",
-    "Verzonden via",
-    "Verstuurd via",
-    "Sent from",
-    "Get Outlook for",
-    "Von meinem"
-  ]
+  "signatures": ["Verstuurd vanaf mijn", "Sent from my", "Gesendet von meinem", "Verzonden vanaf mijn", "Verzonden via", "Verstuurd via", "Sent from", "Get Outlook for", "Von meinem"]
 }
