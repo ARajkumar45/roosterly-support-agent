@@ -1,6 +1,6 @@
 {
-  "saved_at": "2026-11-18T05:43:34Z",
-  "commit": "27b71bc",
+  "saved_at": "2026-11-18T12:52:14Z",
+  "commit": "5b9e653-dirty",
   "model": "claude-haiku-5-5",
   "labelled_by": "Nordavo",
   "threshold": 0.75,
@@ -9,28 +9,25 @@
     "language": 10,
     "category": 10,
     "priority": 10,
-    "action": 9
+    "action": 10
   },
   "unsafe": [],
-  "answerable_but_handed_off": [
-    "E02"
-  ],
+  "answerable_but_handed_off": [],
   "steadiness": {
     "runs": 3,
     "action_scores": [
-      9,
+      10,
       9,
       9
     ],
     "unsafe_in_any_run": [],
     "action_changed_between_runs": [
-      "E02",
-      "E05"
+      "E02"
     ]
   },
   "tokens": {
-    "in": 113835,
-    "out": 31149
+    "in": 119407,
+    "out": 30078
   },
   "rows": [
     {
@@ -59,7 +56,7 @@
     },
     {
       "id": "E02",
-      "handoff_reason": "low_confidence",
+      "handoff_reason": null,
       "language": {
         "label": "nl",
         "ours": "nl",
@@ -77,8 +74,8 @@
       },
       "action": {
         "label": "reply",
-        "ours": "handoff",
-        "match": false
+        "ours": "reply",
+        "match": true
       }
     },
     {

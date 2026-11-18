@@ -39,29 +39,51 @@ general rules in the prompt. No example text is in the code or the prompt.
 - A feature request gets a reply that points to the help-centre entry on ideas.
 - Unsolicited advertising is closed as spam.
 
-## The fix and what came with it
+## The one fix, and the other changes
 
-- Coverage rule in the prompt (see above). Before: action 7/10. After: 9/10 in three runs.
-- A reply may repeat a number the customer wrote, but every amount of money or percentage
-  must come from the help centre.
-- Close still needs two signals. The second may be a separate, narrow model call that
-  answers SPAM or CUSTOMER. It is skipped when any guard hint fired. Risk I accept: both
-  calls come from the same model, so they are not fully independent.
-- More must-handoff wordings were added to the code list. Nothing was removed from it:
-  a false handoff is cheap, a missed one is not.
+**The fix.** The agent handed off tickets that the help centre answers. The model's rules
+now say a question is covered when the help centre states a requirement or limit that
+explains the problem, or says how customers do it themselves. One supporting change was
+needed for it to reach the customer: a reply may repeat a number the customer wrote (a
+version number), but a number next to money or time must come from the help centre.
+Before: action 7/10. After: 9/10 in three runs.
+
+**Other changes, made separately and measured with the same eval:**
+- Close still needs two signals. When the code word list sees no spam, a second, narrow
+  model call may confirm it (SPAM or CUSTOMER). It is skipped when any guard hint fired.
+  Risk I accept: both calls use the same model, so they are not fully independent.
+- A ticket that asks nothing (only thanks, a greeting) goes to a human.
+- More must-handoff wordings in the code list. Nothing was removed: a false handoff is
+  cheap, a missed one is not.
 - "It does not work" alone no longer counts as "already tried". The model's field decides.
+
+**Hardening found by an independent red-team pass**, each with a test in `tests/test_fixes.py`:
+- Payment details are hidden also when split by invisible characters, mixed separators,
+  quoted line breaks or table cells.
+- Promises are caught in any form ("a colleague will", "within 2 weeks"), and names in
+  single quotes must come from the help centre.
+- A reply in a different language from the ticket goes to a human.
+- One broken ticket is logged and left open; it never stops the run.
+- A crash between "saved" and "logged" is repaired on restart: the missing log line is written.
 - The model address is fixed in code, so a shell variable cannot send the key elsewhere.
-- The model does not accept temperature 0. Answers can differ between runs, so the eval
-  can run several times (`--repeat`) and reports which tickets changed.
+
+## Final run and the live session
+
+After the final run, create the file `.final_run_done` (`touch .final_run_done`). From then
+on a real run and a reset are refused, so the scored result cannot be overwritten by
+accident. Delete the file before the live session, where the agent runs on new tickets.
 
 ## Known limits
 
 - The must-handoff word list will miss new wordings. The model is the second net.
-- The English check sometimes stops a good reply (a translated name looks unknown).
-  That costs a handoff, never a wrong reply.
-- 10 examples and 16 own tickets are a small sample. My own labels were drafted with
-  Claude Code and reviewed by me, not by a Dutch speaker.
-- Code outside tests is about 1,700 lines, more than I planned.
+- A made-up fact with no number, link or name (for example "free on Basis") cannot be
+  caught by code. Only the model's own care, and the help-centre quote it must give, guard it.
+- The model does not accept temperature 0, so answers can differ between runs. The eval
+  runs several times (`--repeat`) and reports which tickets changed.
+- The English check sometimes stops a good reply. That costs a handoff, never a wrong reply.
+- My own 46 test tickets were labelled with Claude Code and reviewed by me, not by a
+  Dutch speaker.
+- The agent is about 1,700 lines, more than I planned. The decision step is a list of small named rules (`RULES` in `agent/decide.py`), so each rule can be read and changed on its own.
 
 ## Questions to Nordavo
 
