@@ -32,6 +32,7 @@ def no_waiting(monkeypatch):
 
 def start(desk, clock, tmp_path, dry_run=False, settings=None, **more):
     lines = []
+    more.setdefault("final_marker", tmp_path / ".final_run_done")  # never the real lock file
     code = run(
         settings or make_settings(), desk.client(clock, dry_run), dry_run,
         assume_yes=True, log_dir=tmp_path / "logs", marker=tmp_path / ".agent_account",
@@ -166,8 +167,8 @@ def test_real_run_needs_a_model_and_a_yes(monkeypatch, clock, tmp_path):
     assert code == 2 and "No model" in text
     fake_model(monkeypatch, lambda user: covered_form(FAQ))
     code = run(make_settings(), desk.client(clock), False, log_dir=tmp_path,
-               marker=tmp_path / ".agent_account", say=lambda line: None,
-               ask_user=lambda question: "n")
+               marker=tmp_path / ".agent_account", final_marker=tmp_path / ".final_run_done",
+               say=lambda line: None, ask_user=lambda question: "n")
     assert code == 2 and desk.posts == []
 
 

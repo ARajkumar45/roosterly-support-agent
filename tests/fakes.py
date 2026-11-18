@@ -92,10 +92,23 @@ def covered_form(faq, **changes):
     return {**base, **changes}
 
 
+def english_like(draft):
+    """A stand-in English translation: plain English with the draft's digits and links, so the
+    number and link compare matches, as a faithful translation would."""
+    from agent.decide import urls
+    keep = re.findall(r"\d+(?:[.,]\d+)?", urls_removed(draft)) + sorted(urls(draft))
+    return f"Hello, here is the answer for you: {' '.join(keep)}. Kind regards, team roosterly"
+
+
+def urls_removed(text):
+    from agent.decide import URL
+    return URL.sub(" ", text)
+
+
 def fake_model(monkeypatch, answer_for, spam_answer="CUSTOMER"):
     """Install a fake provider. answer_for(user_message) returns a form dict, a string or an Answer.
 
-    The English back-translation call just returns the draft, so its numbers and links match.
+    The English back-translation call returns plain English with the draft's numbers and links.
     The second spam check answers spam_answer.
     """
     calls = []
@@ -103,7 +116,7 @@ def fake_model(monkeypatch, answer_for, spam_answer="CUSTOMER"):
     def provider(settings, model, system, user):
         calls.append(user)
         if system == llm.VIEW_PROMPT:
-            return llm.Answer(user, 10, 10)
+            return llm.Answer(english_like(user), 10, 10)
         if system == llm.SPAM_PROMPT:
             calls.append("second spam check")
             return llm.Answer(spam_answer, 10, 1)

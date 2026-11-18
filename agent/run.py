@@ -19,7 +19,7 @@ from collections import Counter
 from datetime import datetime, timezone
 
 from agent import config, llm
-from agent.decide import decide, to_handoff, view_problems
+from agent.decide import decide, detect, to_handoff, view_problems
 from agent.helpdesk import GaveUp, Helpdesk, HelpdeskError, StopRun, build_body
 from agent.logs import finished_ids, write_line
 from agent.rules import guard, redact
@@ -69,14 +69,20 @@ def triage(ticket, settings, faq):
                 found.close_signal = "spam (confirmed by a second check)"
     decision = decide(ticket, found, out, faq, settings.threshold)
 
+    # One repair try: only when the fact or quote check stopped the draft. The new form goes
+    # through every rule and check again; if it fails again, the ticket goes to a human.
+    if decision.repair_hint and settings.provider:
+        again, more_in, more_out, _ = llm.fill_form(settings, faq, ticket, feedback=decision.repair_hint)
+        tokens_in, tokens_out = tokens_in + more_in, tokens_out + more_out
+        if again is not None:
+            out = again
+            decision = decide(ticket, found, out, faq, settings.threshold)
+            decision.repaired = True
+
     view = None
     if decision.action == "reply":
-        view, more_in, more_out = llm.english_view(settings, decision.draft_reply)
+        view, problems, more_in, more_out = english_check(settings, decision, ticket, faq)
         tokens_in, tokens_out = tokens_in + more_in, tokens_out + more_out
-        known = " ".join([*(faq.get(i, "") for i in decision.faq_ids),
-                          str(ticket.get("subject")), str(ticket.get("body"))])
-        cited = " ".join(faq.get(i, "") for i in decision.faq_ids)
-        problems = view_problems(decision.draft_reply, view, known, cited)
         decision.checks["english_view"] = not problems
         if problems:
             decision = to_handoff(
@@ -85,6 +91,40 @@ def triage(ticket, settings, faq):
                 out.summary, ticket.get("customer_plan") or "unknown",
             )
     return decision, found, view, tokens_in, tokens_out
+
+
+# Problems that can be a slip of the translation itself. A promise is never one of them:
+# a second translation could word a real promise differently and hide it.
+TRANSLATION_SLIPS = {"unknown_name", "numbers_or_links", "not_english"}
+
+
+def english_check(settings, decision, ticket, faq):
+    """Translate the draft back to English and check it. Returns (view, problems, tokens in, out).
+
+    An English draft is checked as it is. Otherwise, when the only problems look like a
+    translation slip (a name translated, a number written differently, a view that is not
+    English), the draft is translated once more; the reply stands only if that one passes.
+    """
+    # Names the reply may use: the quoted help-centre entries, the ticket, and the plan the
+    # helpdesk gives for this customer.
+    known = " ".join([*(faq.get(i, "") for i in decision.faq_ids), str(ticket.get("subject")),
+                      str(ticket.get("body")), str(ticket.get("customer_plan") or "")])
+    cited = " ".join(faq.get(i, "") for i in decision.faq_ids)
+    language, lead = detect(decision.draft_reply)
+    if language == "en" and lead >= 2:
+        view = decision.draft_reply
+        return view, view_problems(decision.draft_reply, view, known, cited), 0, 0
+    tokens_in = tokens_out = 0
+    for _ in range(2):
+        view, more_in, more_out = llm.english_view(settings, decision.draft_reply)
+        tokens_in, tokens_out = tokens_in + more_in, tokens_out + more_out
+        problems = view_problems(decision.draft_reply, view, known, cited)
+        view_language, view_lead = detect(view)
+        if view_language != "en" and view_lead >= 2:  # a promise check on Dutch text finds nothing
+            problems.append("not_english")
+        if not problems or not set(problems) <= TRANSLATION_SLIPS:
+            break
+    return view, problems, tokens_in, tokens_out
 
 
 def check_account(email, marker):
@@ -177,6 +217,9 @@ def handle(run, helpdesk, ticket, faq):
         language=decision.language, category=decision.category,
         priority=decision.priority, action=decision.action,
         reason=decision.reason, faq_ids=decision.faq_ids, confidence=decision.confidence,
+        model_confidence=decision.model_confidence,  # also on handoffs, to test the cut-off
+        rejected_draft=decision.rejected_draft,  # a draft a check stopped, to see why
+        repaired=decision.repaired,  # the reply came from the one repair try
         guard={"tier1": found.tier1, "tier2": found.tier2,
                "injection": found.injection, "close_signal": found.close_signal},
         handoff_reason=decision.handoff_reason, checks=decision.checks,
@@ -208,10 +251,13 @@ def summary(run, total):
     return 1 if (run.failed or run.stopped) else 0
 
 
-def run(settings, helpdesk, dry_run, tickets=None, assume_yes=False,
-        log_dir=config.ROOT / "logs", marker=config.ROOT / ".agent_account",
-        final_marker=config.ROOT / ".final_run_done", say=print, ask_user=input):
-    """Returns the exit code: 0 all done, 1 some tickets left open, 2 cannot run."""
+def run(settings, helpdesk, dry_run, tickets=None, assume_yes=False, *,
+        log_dir, marker, final_marker, say=print, ask_user=input):
+    """Returns the exit code: 0 all done, 1 some tickets left open, 2 cannot run.
+
+    log_dir, marker and final_marker have no defaults on purpose: only main() points them
+    at the real repo, so a test can never read the real lock file by accident.
+    """
     refusal = refuse_to_start(settings, dry_run, marker, final_marker)
     if refusal:
         say(refusal)
@@ -281,7 +327,8 @@ def main(argv=None):
         with open(args.tickets_file) as file:
             tickets = [json.loads(line) for line in file if line.strip()]
     helpdesk = Helpdesk(settings.helpdesk_url, settings.helpdesk_key, settings.email, dry_run)
-    return run(settings, helpdesk, dry_run, tickets, args.yes)
+    return run(settings, helpdesk, dry_run, tickets, args.yes, log_dir=config.ROOT / "logs",
+               marker=config.ROOT / ".agent_account", final_marker=config.ROOT / ".final_run_done")
 
 
 if __name__ == "__main__":

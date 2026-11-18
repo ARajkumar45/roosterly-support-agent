@@ -16,8 +16,8 @@ from agent.run import utc_now
 FINAL_MARKER = config.ROOT / ".final_run_done"
 
 
-def reset(settings, helpdesk, final_marker=FINAL_MARKER, say=print, ask_user=input,
-          log_dir=config.ROOT / "logs"):
+def reset(settings, helpdesk, *, final_marker, log_dir, say=print, ask_user=input):
+    """No default paths on purpose: only main() points them at the real repo."""
     if final_marker.exists():
         say("The final run is done (.final_run_done exists). Reset refused.")
         return 2
@@ -44,7 +44,7 @@ def reset(settings, helpdesk, final_marker=FINAL_MARKER, say=print, ask_user=inp
 def main():
     settings = config.load()
     helpdesk = Helpdesk(settings.helpdesk_url, settings.helpdesk_key, settings.email, dry_run=False)
-    return reset(settings, helpdesk)
+    return reset(settings, helpdesk, final_marker=FINAL_MARKER, log_dir=config.ROOT / "logs")
 
 
 if __name__ == "__main__":
