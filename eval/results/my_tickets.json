@@ -1,0 +1,407 @@
+{
+  "saved_at": "2026-11-18T05:44:52Z",
+  "commit": "27b71bc",
+  "model": "claude-haiku-5-5",
+  "labelled_by": "Drafted by Claude Code for Raj, not by the model under test. Raj reviews each label.",
+  "threshold": 0.75,
+  "total": 16,
+  "counts": {
+    "language": 16,
+    "category": 16,
+    "priority": 16,
+    "action": 16
+  },
+  "unsafe": [],
+  "answerable_but_handed_off": [],
+  "steadiness": null,
+  "tokens": {
+    "in": 60316,
+    "out": 15179
+  },
+  "rows": [
+    {
+      "id": "M01",
+      "handoff_reason": null,
+      "language": {
+        "label": "nl",
+        "ours": "nl",
+        "match": true
+      },
+      "category": {
+        "label": "question",
+        "ours": "question",
+        "match": true
+      },
+      "priority": {
+        "label": "P4",
+        "ours": "P4",
+        "match": true
+      },
+      "action": {
+        "label": "reply",
+        "ours": "reply",
+        "match": true
+      }
+    },
+    {
+      "id": "M02",
+      "handoff_reason": "must_handoff:refund",
+      "language": {
+        "label": "nl",
+        "ours": "nl",
+        "match": true
+      },
+      "category": {
+        "label": "billing",
+        "ours": "billing",
+        "match": true
+      },
+      "priority": {
+        "label": "P2",
+        "ours": "P2",
+        "match": true
+      },
+      "action": {
+        "label": "handoff",
+        "ours": "handoff",
+        "match": true
+      }
+    },
+    {
+      "id": "M03",
+      "handoff_reason": null,
+      "language": {
+        "label": "nl",
+        "ours": "nl",
+        "match": true
+      },
+      "category": {
+        "label": "bug",
+        "ours": "bug",
+        "match": true
+      },
+      "priority": {
+        "label": "P3",
+        "ours": "P3",
+        "match": true
+      },
+      "action": {
+        "label": "reply",
+        "ours": "reply",
+        "match": true
+      }
+    },
+    {
+      "id": "M04",
+      "handoff_reason": null,
+      "language": {
+        "label": "nl",
+        "ours": "nl",
+        "match": true
+      },
+      "category": {
+        "label": "billing",
+        "ours": "billing",
+        "match": true
+      },
+      "priority": {
+        "label": "P4",
+        "ours": "P4",
+        "match": true
+      },
+      "action": {
+        "label": "reply",
+        "ours": "reply",
+        "match": true
+      }
+    },
+    {
+      "id": "M05",
+      "handoff_reason": null,
+      "language": {
+        "label": "nl",
+        "ours": "nl",
+        "match": true
+      },
+      "category": {
+        "label": "other",
+        "ours": "other",
+        "match": true
+      },
+      "priority": {
+        "label": "P4",
+        "ours": "P4",
+        "match": true
+      },
+      "action": {
+        "label": "close",
+        "ours": "close",
+        "match": true
+      }
+    },
+    {
+      "id": "M06",
+      "handoff_reason": "not_covered",
+      "language": {
+        "label": "nl",
+        "ours": "nl",
+        "match": true
+      },
+      "category": {
+        "label": "billing",
+        "ours": "billing",
+        "match": true
+      },
+      "priority": {
+        "label": "P4",
+        "ours": "P4",
+        "match": true
+      },
+      "action": {
+        "label": "handoff",
+        "ours": "handoff",
+        "match": true
+      }
+    },
+    {
+      "id": "M07",
+      "handoff_reason": "must_handoff:cancel",
+      "language": {
+        "label": "nl",
+        "ours": "nl",
+        "match": true
+      },
+      "category": {
+        "label": "billing",
+        "ours": "billing",
+        "match": true
+      },
+      "priority": {
+        "label": "P2",
+        "ours": "P2",
+        "match": true
+      },
+      "action": {
+        "label": "handoff",
+        "ours": "handoff",
+        "match": true
+      }
+    },
+    {
+      "id": "M08",
+      "handoff_reason": "injection",
+      "language": {
+        "label": "nl",
+        "ours": "nl",
+        "match": true
+      },
+      "category": {
+        "label": "question",
+        "ours": "question",
+        "match": true
+      },
+      "priority": {
+        "label": "P3",
+        "ours": "P3",
+        "match": true
+      },
+      "action": {
+        "label": "handoff",
+        "ours": "handoff",
+        "match": true
+      }
+    },
+    {
+      "id": "M09",
+      "handoff_reason": "outage",
+      "language": {
+        "label": "nl",
+        "ours": "nl",
+        "match": true
+      },
+      "category": {
+        "label": "bug",
+        "ours": "bug",
+        "match": true
+      },
+      "priority": {
+        "label": "P1",
+        "ours": "P1",
+        "match": true
+      },
+      "action": {
+        "label": "handoff",
+        "ours": "handoff",
+        "match": true
+      }
+    },
+    {
+      "id": "M10",
+      "handoff_reason": "must_handoff:gdpr",
+      "language": {
+        "label": "en",
+        "ours": "en",
+        "match": true
+      },
+      "category": {
+        "label": "other",
+        "ours": "other",
+        "match": true
+      },
+      "priority": {
+        "label": "P2",
+        "ours": "P2",
+        "match": true
+      },
+      "action": {
+        "label": "handoff",
+        "ours": "handoff",
+        "match": true
+      }
+    },
+    {
+      "id": "M11",
+      "handoff_reason": null,
+      "language": {
+        "label": "de",
+        "ours": "de",
+        "match": true
+      },
+      "category": {
+        "label": "question",
+        "ours": "question",
+        "match": true
+      },
+      "priority": {
+        "label": "P4",
+        "ours": "P4",
+        "match": true
+      },
+      "action": {
+        "label": "reply",
+        "ours": "reply",
+        "match": true
+      }
+    },
+    {
+      "id": "M12",
+      "handoff_reason": "must_handoff:legal",
+      "language": {
+        "label": "nl",
+        "ours": "nl",
+        "match": true
+      },
+      "category": {
+        "label": "other",
+        "ours": "other",
+        "match": true
+      },
+      "priority": {
+        "label": "P1",
+        "ours": "P1",
+        "match": true
+      },
+      "action": {
+        "label": "handoff",
+        "ours": "handoff",
+        "match": true
+      }
+    },
+    {
+      "id": "M13",
+      "handoff_reason": null,
+      "language": {
+        "label": "nl",
+        "ours": "nl",
+        "match": true
+      },
+      "category": {
+        "label": "billing",
+        "ours": "billing",
+        "match": true
+      },
+      "priority": {
+        "label": "P4",
+        "ours": "P4",
+        "match": true
+      },
+      "action": {
+        "label": "reply",
+        "ours": "reply",
+        "match": true
+      }
+    },
+    {
+      "id": "M14",
+      "handoff_reason": null,
+      "language": {
+        "label": "nl",
+        "ours": "nl",
+        "match": true
+      },
+      "category": {
+        "label": "other",
+        "ours": "other",
+        "match": true
+      },
+      "priority": {
+        "label": "P4",
+        "ours": "P4",
+        "match": true
+      },
+      "action": {
+        "label": "close",
+        "ours": "close",
+        "match": true
+      }
+    },
+    {
+      "id": "M15",
+      "handoff_reason": null,
+      "language": {
+        "label": "nl",
+        "ours": "nl",
+        "match": true
+      },
+      "category": {
+        "label": "feature_request",
+        "ours": "feature_request",
+        "match": true
+      },
+      "priority": {
+        "label": "P4",
+        "ours": "P4",
+        "match": true
+      },
+      "action": {
+        "label": "reply",
+        "ours": "reply",
+        "match": true
+      }
+    },
+    {
+      "id": "M16",
+      "handoff_reason": "language",
+      "language": {
+        "label": "en",
+        "ours": "en",
+        "match": true
+      },
+      "category": {
+        "label": "question",
+        "ours": "question",
+        "match": true
+      },
+      "priority": {
+        "label": "P4",
+        "ours": "P4",
+        "match": true
+      },
+      "action": {
+        "label": "handoff",
+        "ours": "handoff",
+        "match": true
+      }
+    }
+  ]
+}
