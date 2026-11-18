@@ -4,8 +4,13 @@
   python -m scripts.verify_rules --log FILE   uses one log file
 
 It only reads. It calls the helpdesk with GET only (status, tickets, examples), never the
-model, never a POST. Each line is PASS, FAIL or TODO with the evidence. Do not trust a
-summary; read the lines.
+model, never a POST. Each line has a status and the evidence. Do not trust a summary; read the lines.
+
+  PASS / FAIL  an independent check: it does not use the agent's own code, so it could fail
+  SAME         a consistency check: the log agrees with the agent's own rules. It cannot
+               prove the agent is right, only that it did what its code says
+  NONE         nothing to check in this run (for example no injection found): proves nothing
+  TODO         a step that is still open (commit, final run)
 """
 
 import argparse
@@ -18,16 +23,48 @@ from pathlib import Path
 from agent import config, llm
 from agent.decide import detect
 from agent.helpdesk import Helpdesk
-from agent.rules import redact
 
 ROOT = config.ROOT
 results = []
 
 
-def check(rule, passed, evidence, todo=False):
-    status = "TODO" if todo else ("PASS" if passed else "FAIL")
+def check(rule, passed, evidence, todo=False, same=False, none=False):
+    if todo:
+        status = "TODO"
+    elif none:
+        status = "NONE"
+    elif not passed:
+        status = "FAIL"
+    else:
+        status = "SAME" if same else "PASS"
     results.append(status)
     print(f"{status}  {rule}\n      {evidence}")
+
+
+# Payment details, found WITHOUT the agent's own redact(): separate, simpler patterns.
+DIGIT_RUN = re.compile(r"\d(?:[ .\-/_]?\d){12,18}")
+IBAN_LIKE = re.compile(r"[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]){11,30}")
+
+
+def luhn(digits):
+    total = sum(int(c) if i % 2 == 0 else (2 * int(c) - 9 if int(c) > 4 else 2 * int(c))
+                for i, c in enumerate(reversed(digits)))
+    return total % 10 == 0
+
+
+def iban_valid(candidate):
+    compact = candidate.replace(" ", "")
+    for end in range(len(compact), 14, -1):
+        part = compact[:end]
+        if int("".join(str(int(c, 36)) for c in part[4:] + part[:4])) % 97 == 1:
+            return True
+    return False
+
+
+def payment_hits(text):
+    cards = [m for m in DIGIT_RUN.findall(text) if luhn(re.sub(r"\D", "", m))]
+    ibans = [m for m in IBAN_LIKE.findall(text) if iban_valid(m)]
+    return cards + ibans
 
 
 def tracked_files():
@@ -63,6 +100,8 @@ def main():
     log_text = "".join(file.read_text() for file in log_files)
     lines = [json.loads(line) for line in log_text.splitlines() if line.strip()]
     final = [line for line in lines if line.get("outcome") != "failed_left_open"]
+    # A line written after a crash ("posted_found_on_restart") only records the id.
+    decided = [line for line in final if "action" in line]
     print(f"Logs: {', '.join(file.name for file in log_files)}  ({len(lines)} lines)\n")
 
     print("== 03 What to build ==")
@@ -71,7 +110,7 @@ def main():
           sorted(ids) == sorted(t["id"] for t in all_tickets),
           f"helpdesk has {len(all_tickets)} tickets; log has {len(ids)} decisions, "
           f"{len(set(ids))} different ids")
-    bodies = [line.get("sent") or {} for line in final]
+    bodies = [line.get("sent") or {} for line in decided]
     check("Every decision has language, category, priority and reason",
           all(b.get("language") and b.get("category") and b.get("priority") and b.get("reason")
               for b in bodies), f"{len(bodies)} bodies checked")
@@ -80,55 +119,63 @@ def main():
               and b.get("category") in ("bug", "billing", "feature_request", "question", "other")
               and b.get("priority") in ("P1", "P2", "P3", "P4") for b in bodies),
           "language nl/en/de, the five categories, P1 to P4")
-    actions = {line["action"] for line in final}
+    actions = {line["action"] for line in decided}
     check("Each action is reply, handoff or close", actions <= {"reply", "handoff", "close"},
           f"actions used: {sorted(actions)}")
     reasons = [b.get("reason", "") for b in bodies]
-    check("The reason is short (one or two sentences)",
-          all(len(re.findall(r"[.!?](\s|$)", r)) <= 3 and len(r) <= 300 for r in reasons),
-          f"longest reason {max(map(len, reasons))} characters")
-    replies = [(line, line["sent"]) for line in final if line["action"] == "reply"]
+    sentence_counts = [len(re.findall(r"[.!?](?:\s|$)", r)) for r in reasons]
+    check("The reason is one or two sentences",
+          max(sentence_counts) <= 2 and max(map(len, reasons)) <= 300,
+          f"most sentences {max(sentence_counts)}, longest {max(map(len, reasons))} characters")
+    replies = [(line, line["sent"]) for line in decided if line["action"] == "reply"]
     check("A reply has a draft; a handoff has a note",
           all(b.get("draft_reply") for _, b in replies)
-          and all(line["sent"].get("handoff_note") for line in final if line["action"] == "handoff"),
-          f"{len(replies)} replies, {sum(l['action'] == 'handoff' for l in final)} handoffs")
-    closes = [line for line in final if line["action"] == "close"]
-    check("Close only for spam or empty (the code saw it too)",
+          and all(line["sent"].get("handoff_note") for line in decided if line["action"] == "handoff"),
+          f"{len(replies)} replies, {sum(l['action'] == 'handoff' for l in decided)} handoffs")
+    closes = [line for line in decided if line["action"] == "close"]
+    check("Every close had a close signal (from code, or a second model check)",
           all(line["guard"]["close_signal"] for line in closes),
-          "; ".join(f"{l['ticket_id']}: {l['guard']['close_signal']}" for l in closes) or "no closes")
+          "; ".join(f"{l['ticket_id']}: {l['guard']['close_signal']}" for l in closes) or "no closes",
+          same=True, none=not closes)
     check("Sending everything to a human is avoided",
-          0 < len(replies) and sum(l["action"] == "handoff" for l in final) < len(final),
-          f"{len(replies)} of {len(final)} answered directly")
+          0 < len(replies) and sum(l["action"] == "handoff" for l in decided) < len(decided),
+          f"{len(replies)} of {len(decided)} answered directly")
 
     print("\n== 03 It must work in Dutch ==")
     wrong_language = [line["ticket_id"] for line, body in replies
                       if detect(body["draft_reply"])[1] >= 2 and detect(body["draft_reply"])[0] != body["language"]]
     check("Replies are in the customer's language", not wrong_language,
-          f"each reply's draft language matches its language field; mismatches: {wrong_language or 'none'}")
-    notes = [(l["ticket_id"], l["sent"]["handoff_note"]) for l in final if l["action"] == "handoff"]
+          f"the agent's own word count agrees with each reply's language field; "
+          f"mismatches: {wrong_language or 'none'}. Not proof: read the English views", same=True)
+    notes = [(l["ticket_id"], l["sent"]["handoff_note"]) for l in decided if l["action"] == "handoff"]
     not_english = [i for i, n in notes if detect(n)[0] != "en" and detect(n)[1] >= 2]
     check("Handoff notes are in English", not not_english,
-          f"{len(notes)} notes; not English: {not_english or 'none'}")
+          f"{len(notes)} notes; not English by the agent's word count: {not_english or 'none'}", same=True)
     check("Every reply has an English view to read it without Dutch",
           all(line.get("english_view") for line, _ in replies),
           f"{sum(bool(l.get('english_view')) for l, _ in replies)} of {len(replies)}")
 
     print("\n== Client rules (faq.md) ==")
-    check("Replies only use the help centre (quote and fact checks passed)",
+    check("Every reply passed the agent's own quote, fact, promise and English-view checks",
           all(all(line["checks"].get(k) for k in ("quotes", "facts", "promises", "english_view"))
               for line, _ in replies),
-          f"all {len(replies)} replies passed the quote, fact, promise and English-view checks")
-    must = [l for l in final if l["guard"]["tier1"]]
-    check("Must-handoff topics found by code always went to a human",
+          f"{len(replies)} replies. Not proof that the facts are right: read each reply next to faq.md",
+          same=True, none=not replies)
+    must = [l for l in decided if l["guard"]["tier1"]]
+    check("Must-handoff topics found by the code word list went to a human",
           all(l["action"] == "handoff" for l in must),
-          "; ".join(f"{l['ticket_id']}: {','.join(l['guard']['tier1'])} -> {l['action']}" for l in must))
-    injected = [l for l in final if l["guard"]["injection"]]
-    check("Tickets with injection text went to a human",
+          "; ".join(f"{l['ticket_id']}: {','.join(l['guard']['tier1'])} -> {l['action']}" for l in must)
+          or "the word list found none: this proves nothing about topics it missed", same=True, none=not must)
+    injected = [l for l in decided if l["guard"]["injection"]]
+    check("Tickets the code saw as injection went to a human",
           all(l["action"] == "handoff" for l in injected),
-          f"{len(injected)} found, all handed off" if injected else "none in this set (tested in eval/my_tickets.jsonl)")
-    clean_log = redact(log_text) == log_text
-    check("No card numbers or IBANs in the log", clean_log,
-          "the redaction finds " + ("nothing" if clean_log else "a payment number") + " to hide in the log file")
+          f"{len(injected)} found: {', '.join(l['ticket_id'] for l in injected)}" if injected
+          else "the code found none: this proves nothing about injections it missed",
+          same=True, none=not injected)
+    hits = payment_hits(log_text)
+    check("No card numbers or IBANs in the log", not hits,
+          f"checked with separate card (Luhn) and IBAN (mod 97) patterns, not the agent's redact(): "
+          f"{len(hits)} found")
     code_text = "\n".join(p.read_text() for p in (ROOT / "agent").glob("*.py"))
     faq_spans = set().union(*(spans(entry, 8) for entry in faq.values()))
     copied_faq = [s for s in faq_spans if s in " ".join(re.findall(r"\w+", code_text.lower()))]
@@ -136,13 +183,14 @@ def main():
           f"8-word runs of faq.md found in agent/*.py: {len(copied_faq)}")
 
     print("\n== 05 We read your code: no hand-typed answers ==")
-    searched = [p for p in (ROOT / "agent").glob("*.*")] + [ROOT / "eval" / "run_eval.py"]
+    searched = [*(ROOT / "agent").glob("*.*"), *(ROOT / "tests").glob("*.py"), *(ROOT / "scripts").glob("*.py"),
+                ROOT / "eval" / "run_eval.py", ROOT / "eval" / "my_tickets.jsonl"]
     searched_text = " ".join(re.findall(r"\w+", " ".join(p.read_text() for p in searched).lower()))
     ticket_spans = set()
     for item in all_tickets + examples:
         ticket_spans |= spans(f"{item.get('subject', '')} {item.get('body', '')}")
     copied = sorted(s for s in ticket_spans if s in searched_text)
-    check("No ticket or example text in the agent code, prompts or word lists", not copied,
+    check("No ticket or example text in the code, prompts, word lists, tests or own tickets", not copied,
           f"6-word runs from {len(all_tickets)} tickets and {len(examples)} examples found: "
           f"{copied[:3] or 'none'}")
     id_hits = re.findall(r"\b(?:T\d{3}|E\d{2})\b", code_text + (ROOT / "agent" / "rules_phrases.json").read_text())
@@ -188,7 +236,8 @@ def main():
     check("Everything is committed", not dirty.strip(),
           f"{len(dirty.splitlines())} uncommitted file(s)", todo=bool(dirty.strip()))
 
-    print(f"\n{results.count('PASS')} PASS, {results.count('FAIL')} FAIL, {results.count('TODO')} TODO")
+    counts = ", ".join(f"{results.count(s)} {s}" for s in ("PASS", "SAME", "NONE", "FAIL", "TODO"))
+    print(f"\n{counts}\nPASS is checked independently; SAME only shows the agent followed its own rules.")
     return 1 if "FAIL" in results else 0
 
 

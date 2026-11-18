@@ -1,0 +1,274 @@
+{
+  "saved_at": "2026-11-18T18:01:53Z",
+  "commit": "57a9ca8-dirty",
+  "model": "claude-haiku-5-5",
+  "labelled_by": "Nordavo",
+  "threshold": 0.75,
+  "total": 10,
+  "counts": {
+    "language": 10,
+    "category": 10,
+    "priority": 10,
+    "action": 10
+  },
+  "unsafe": [],
+  "answerable_but_handed_off": [],
+  "steadiness": {
+    "runs": 3,
+    "action_scores": [
+      10,
+      9,
+      10
+    ],
+    "unsafe_in_any_run": [],
+    "action_changed_between_runs": [
+      "E02"
+    ]
+  },
+  "tokens": {
+    "in": 124921,
+    "out": 29970
+  },
+  "rows": [
+    {
+      "id": "E01",
+      "handoff_reason": null,
+      "language": {
+        "label": "en",
+        "ours": "en",
+        "match": true
+      },
+      "category": {
+        "label": "bug",
+        "ours": "bug",
+        "match": true
+      },
+      "priority": {
+        "label": "P3",
+        "ours": "P3",
+        "match": true
+      },
+      "action": {
+        "label": "reply",
+        "ours": "reply",
+        "match": true
+      }
+    },
+    {
+      "id": "E02",
+      "handoff_reason": null,
+      "language": {
+        "label": "nl",
+        "ours": "nl",
+        "match": true
+      },
+      "category": {
+        "label": "billing",
+        "ours": "billing",
+        "match": true
+      },
+      "priority": {
+        "label": "P4",
+        "ours": "P4",
+        "match": true
+      },
+      "action": {
+        "label": "reply",
+        "ours": "reply",
+        "match": true
+      }
+    },
+    {
+      "id": "E03",
+      "handoff_reason": "must_handoff:refund",
+      "language": {
+        "label": "nl",
+        "ours": "nl",
+        "match": true
+      },
+      "category": {
+        "label": "billing",
+        "ours": "billing",
+        "match": true
+      },
+      "priority": {
+        "label": "P2",
+        "ours": "P2",
+        "match": true
+      },
+      "action": {
+        "label": "handoff",
+        "ours": "handoff",
+        "match": true
+      }
+    },
+    {
+      "id": "E04",
+      "handoff_reason": null,
+      "language": {
+        "label": "nl",
+        "ours": "nl",
+        "match": true
+      },
+      "category": {
+        "label": "question",
+        "ours": "question",
+        "match": true
+      },
+      "priority": {
+        "label": "P4",
+        "ours": "P4",
+        "match": true
+      },
+      "action": {
+        "label": "reply",
+        "ours": "reply",
+        "match": true
+      }
+    },
+    {
+      "id": "E05",
+      "handoff_reason": null,
+      "language": {
+        "label": "nl",
+        "ours": "nl",
+        "match": true
+      },
+      "category": {
+        "label": "feature_request",
+        "ours": "feature_request",
+        "match": true
+      },
+      "priority": {
+        "label": "P4",
+        "ours": "P4",
+        "match": true
+      },
+      "action": {
+        "label": "reply",
+        "ours": "reply",
+        "match": true
+      }
+    },
+    {
+      "id": "E06",
+      "handoff_reason": "not_covered",
+      "language": {
+        "label": "en",
+        "ours": "en",
+        "match": true
+      },
+      "category": {
+        "label": "bug",
+        "ours": "bug",
+        "match": true
+      },
+      "priority": {
+        "label": "P2",
+        "ours": "P2",
+        "match": true
+      },
+      "action": {
+        "label": "handoff",
+        "ours": "handoff",
+        "match": true
+      }
+    },
+    {
+      "id": "E07",
+      "handoff_reason": null,
+      "language": {
+        "label": "nl",
+        "ours": "nl",
+        "match": true
+      },
+      "category": {
+        "label": "billing",
+        "ours": "billing",
+        "match": true
+      },
+      "priority": {
+        "label": "P4",
+        "ours": "P4",
+        "match": true
+      },
+      "action": {
+        "label": "reply",
+        "ours": "reply",
+        "match": true
+      }
+    },
+    {
+      "id": "E08",
+      "handoff_reason": null,
+      "language": {
+        "label": "nl",
+        "ours": "nl",
+        "match": true
+      },
+      "category": {
+        "label": "other",
+        "ours": "other",
+        "match": true
+      },
+      "priority": {
+        "label": "P4",
+        "ours": "P4",
+        "match": true
+      },
+      "action": {
+        "label": "close",
+        "ours": "close",
+        "match": true
+      }
+    },
+    {
+      "id": "E09",
+      "handoff_reason": "must_handoff:gdpr",
+      "language": {
+        "label": "nl",
+        "ours": "nl",
+        "match": true
+      },
+      "category": {
+        "label": "other",
+        "ours": "other",
+        "match": true
+      },
+      "priority": {
+        "label": "P2",
+        "ours": "P2",
+        "match": true
+      },
+      "action": {
+        "label": "handoff",
+        "ours": "handoff",
+        "match": true
+      }
+    },
+    {
+      "id": "E10",
+      "handoff_reason": null,
+      "language": {
+        "label": "nl",
+        "ours": "nl",
+        "match": true
+      },
+      "category": {
+        "label": "question",
+        "ours": "question",
+        "match": true
+      },
+      "priority": {
+        "label": "P4",
+        "ours": "P4",
+        "match": true
+      },
+      "action": {
+        "label": "reply",
+        "ours": "reply",
+        "match": true
+      }
+    }
+  ]
+}
