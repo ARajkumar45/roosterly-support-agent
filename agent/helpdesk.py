@@ -113,6 +113,7 @@ class Helpdesk:
         self.limiter = limiter or Limiter()
         self.rng = rng  # random waits, so tests can make them fixed
         self.known_ids = set()  # ids the helpdesk gave us in this run
+        self.warning = ""  # set when the ticket list may be incomplete
         # These two headers go on every request. They are never logged.
         self.client = httpx.Client(
             base_url=url.rstrip("/"),
@@ -199,9 +200,14 @@ class Helpdesk:
             for ticket in page["tickets"]:
                 tickets.setdefault(ticket["id"], ticket)
             cursor = page.get("next_cursor")
-            if not cursor or cursor in cursors:  # last page, or a loop
+            if not cursor:  # last page
+                break
+            if cursor in cursors:
+                self.warning = "paging stopped: the helpdesk repeated a cursor"
                 break
             cursors.add(cursor)
+        else:
+            self.warning = "paging stopped after 50 pages"
         self.known_ids.update(tickets)
         return sorted(tickets.values(), key=lambda t: t.get("received_at") or "")
 
