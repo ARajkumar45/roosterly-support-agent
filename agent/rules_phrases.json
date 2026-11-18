@@ -1,0 +1,212 @@
+{
+  "tier1": {
+    "refund": {
+      "rule": "Refunds or disputed charges always go to a human.",
+      "phrases": {
+        "geld terug": "money back",
+        "terugbetaling": "refund",
+        "terugstorten": "pay back to my account",
+        "restitutie": "refund (formal)",
+        "creditnota": "credit note",
+        "dubbel afgeschreven": "charged twice",
+        "onterecht afgeschreven": "wrongly charged",
+        "factuur klopt niet": "the invoice is wrong",
+        "terugboeking": "reversal of a payment",
+        "storno": "payment reversal",
+        "chargeback": "chargeback",
+        "Rückerstattung": "refund (German)",
+        "Geld zurück": "money back (German)",
+        "refund": "refund",
+        "money back": "money back",
+        "dispute the charge": "dispute the charge"
+      }
+    },
+    "cancel": {
+      "rule": "Cancellations and contract changes always go to a human.",
+      "phrases": {
+        "abonnement opzeggen": "cancel the subscription",
+        "account opzeggen": "cancel the account",
+        "contract opzeggen": "cancel the contract",
+        "abonnement annuleren": "cancel the subscription",
+        "account annuleren": "cancel the account",
+        "abonnement stopzetten": "stop the subscription",
+        "abonnement beëindigen": "end the subscription",
+        "opzegtermijn": "notice period",
+        "opgezegd": "have cancelled",
+        "contract wijzigen": "change the contract",
+        "downgraden": "downgrade",
+        "terug naar Basis": "back to the Basis plan",
+        "definitief sluiten": "close for good",
+        "Kündigung": "cancellation (German)",
+        "Vertrag kündigen": "cancel the contract (German)",
+        "Vertrag beenden": "end the contract (German)",
+        "cancel my subscription": "cancel my subscription",
+        "cancel our account": "cancel our account"
+      }
+    },
+    "gdpr": {
+      "rule": "Personal data requests (GDPR, AVG) always go to a human.",
+      "phrases": {
+        "verwijder mijn gegevens": "delete my data",
+        "gegevens verwijderen": "delete data",
+        "inzageverzoek": "request to see my data",
+        "DSGVO": "GDPR (German name)",
+        "delete my data": "delete my data"
+      }
+    },
+    "security": {
+      "rule": "Possible security incidents always go to a human.",
+      "phrases": {
+        "datalek": "data leak",
+        "gehackt": "hacked",
+        "phishing": "phishing",
+        "onbekende inlog": "unknown login",
+        "verdachte mail": "suspicious email",
+        "data breach": "data breach",
+        "hacked": "hacked"
+      }
+    },
+    "legal": {
+      "rule": "Legal threats always go to a human.",
+      "phrases": {
+        "advocaat": "lawyer",
+        "rechtszaak": "court case",
+        "juridische stappen": "legal steps",
+        "ingebrekestelling": "formal notice of default",
+        "in gebreke": "in default",
+        "aansprakelijk": "liable",
+        "schadevergoeding": "compensation for damage",
+        "Autoriteit Persoonsgegevens": "the Dutch data protection authority",
+        "Anwalt": "lawyer (German)",
+        "rechtliche Schritte": "legal steps (German)",
+        "lawyer": "lawyer",
+        "legal action": "legal action"
+      }
+    },
+    "churn": {
+      "rule": "Customers threatening to leave always go to a human.",
+      "phrases": {
+        "andere aanbieder": "another provider",
+        "iets anders zoeken": "look for something else",
+        "we stappen over": "we are switching",
+        "switch to another provider": "switch to another provider"
+      }
+    }
+  },
+  "tier2": {
+    "contract": "contract",
+    "gegevens": "data",
+    "persoonsgegevens": "personal data",
+    "AVG": "GDPR (Dutch name)",
+    "GDPR": "GDPR",
+    "annuleren": "to cancel",
+    "stoppen": "to stop",
+    "juridisch": "legal",
+    "Auskunft": "information (German)",
+    "Löschung": "deletion (German)",
+    "pauzeren": "to pause",
+    "stilzetten": "to put on hold",
+    "overstappen naar": "switch to",
+    "zonder dat ik": "without me (doing something)",
+    "niet aangevraagd": "not requested",
+    "export van mijn gegevens": "export of my data"
+  },
+  "injection": {
+    "negeer alle instructies": "ignore all instructions",
+    "vergeet alle instructies": "forget all instructions",
+    "je bent nu": "you are now",
+    "systeem:": "system:",
+    "[SYSTEEM]": "[SYSTEM]",
+    "system prompt": "system prompt",
+    "ignore previous": "ignore previous",
+    "ignoriere alle Anweisungen": "ignore all instructions (German)"
+  },
+  "spam": {
+    "casino": "casino",
+    "viagra": "viagra",
+    "bitcoin": "bitcoin",
+    "lottery": "lottery",
+    "loterij": "lottery (Dutch)",
+    "you have won": "you have won",
+    "u heeft gewonnen": "you have won (Dutch)",
+    "seo services": "SEO services",
+    "backlinks": "backlinks"
+  },
+  "already_tried": {
+    "al geprobeerd": "already tried",
+    "werkt niet": "does not work",
+    "heb ik al gedaan": "I already did that",
+    "already tried": "already tried",
+    "schon versucht": "already tried (German)"
+  },
+  "banned_in_reply": {
+    "binnenkort": "soon",
+    "komt eraan": "is coming",
+    "gaan we bouwen": "we will build",
+    "we bellen": "we will call",
+    "een collega neemt contact op": "a colleague will contact you",
+    "ik heb het doorgegeven": "I have passed it on",
+    "we hebben uw idee toegevoegd": "we have added your idea",
+    "terugbetalen": "to refund",
+    "als AI": "as an AI",
+    "as an AI": "as an AI"
+  },
+  "stopwords": {
+    "nl": ["de", "het", "een", "en", "van", "ik", "je", "u", "dat", "niet", "op", "te", "voor", "met", "zijn", "maar", "ook", "bij", "naar", "hoe", "kan", "wij", "onze", "mijn", "wat", "deze", "dit", "aan", "om", "nog", "graag", "geen"],
+    "en": ["the", "and", "of", "you", "that", "not", "to", "for", "with", "are", "but", "also", "how", "can", "our", "my", "what", "this", "there", "have", "do", "please", "would", "i"],
+    "de": ["der", "das", "und", "ich", "sie", "nicht", "ist", "auf", "zu", "für", "mit", "sind", "aber", "auch", "wie", "kann", "wir", "unsere", "mein", "diese", "den", "dem", "bitte", "haben", "eine", "ein"],
+    "fr": ["le", "la", "les", "un", "une", "des", "est", "vous", "nous", "pour", "avec", "dans", "pas", "que", "qui", "sur", "et", "comment", "bonjour", "merci", "mon", "notre"],
+    "es": ["el", "los", "las", "una", "por", "para", "con", "como", "está", "hola", "gracias", "mi", "nuestro", "y", "no", "se", "del", "al"]
+  },
+  "number_words": {
+    "twee": 2,
+    "drie": 3,
+    "vier": 4,
+    "vijf": 5,
+    "zes": 6,
+    "zeven": 7,
+    "acht": 8,
+    "negen": 9,
+    "tien": 10,
+    "elf": 11,
+    "twaalf": 12,
+    "twintig": 20,
+    "dertig": 30,
+    "veertig": 40,
+    "vijftig": 50,
+    "zestig": 60,
+    "honderd": 100,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "twenty": 20,
+    "thirty": 30,
+    "forty": 40,
+    "fifty": 50,
+    "sixty": 60,
+    "hundred": 100,
+    "zwei": 2,
+    "drei": 3,
+    "fünf": 5,
+    "sechs": 6,
+    "sieben": 7,
+    "neun": 9,
+    "zehn": 10,
+    "zwölf": 12,
+    "zwanzig": 20,
+    "dreißig": 30,
+    "vierzig": 40,
+    "fünfzig": 50,
+    "sechzig": 60,
+    "hundert": 100
+  },
+  "signatures": ["Verstuurd vanaf mijn", "Sent from my", "Gesendet von meinem"]
+}
