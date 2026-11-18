@@ -53,14 +53,17 @@ def main():
     examples = helpdesk.examples()
     faq = llm.load_faq()
 
+    # A real cycle can span several log files (a run, a stop, a re-run). The reset moves
+    # older cycles aside, so every run log directly in logs/ belongs to this cycle.
     if args.log:
-        log_file = Path(args.log)
+        log_files = [Path(args.log)]
     else:
-        real = sorted((ROOT / "logs").glob("run-*.jsonl"))
-        log_file = real[-1] if real else sorted((ROOT / "logs" / "dry").glob("run-*.jsonl"))[-1]
-    lines = [json.loads(line) for line in log_file.read_text().splitlines() if line.strip()]
+        log_files = sorted((ROOT / "logs").glob("run-*.jsonl")) or \
+            sorted((ROOT / "logs" / "dry").glob("run-*.jsonl"))[-1:]
+    log_text = "".join(file.read_text() for file in log_files)
+    lines = [json.loads(line) for line in log_text.splitlines() if line.strip()]
     final = [line for line in lines if line.get("outcome") != "failed_left_open"]
-    print(f"Log: {log_file}  ({len(lines)} lines)\n")
+    print(f"Logs: {', '.join(file.name for file in log_files)}  ({len(lines)} lines)\n")
 
     print("== 03 What to build ==")
     ids = [line["ticket_id"] for line in final]
@@ -123,7 +126,6 @@ def main():
     check("Tickets with injection text went to a human",
           all(l["action"] == "handoff" for l in injected),
           f"{len(injected)} found, all handed off" if injected else "none in this set (tested in eval/my_tickets.jsonl)")
-    log_text = log_file.read_text()
     clean_log = redact(log_text) == log_text
     check("No card numbers or IBANs in the log", clean_log,
           "the redaction finds " + ("nothing" if clean_log else "a payment number") + " to hide in the log file")

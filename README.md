@@ -55,6 +55,9 @@ plan change request is a contract change; unsure means confidence below 0.75 or 
 covered when the help centre states a requirement that explains the problem. 9/10 still
 means 60% to 98%. My 46 own edge-case tickets (`eval/my_tickets.jsonl`): 45/46, 0 unsafe.
 
+**Final run:** `logs/run-20261118T131846Z.jsonl`, one line per ticket: 30 tickets, 10 replies,
+18 handoffs, 2 closes, 0 errors. Rehearsal logs are in `logs/before_reset_*`.
+
 **Cost:** 30 ticket passes used 119,407 input and 30,078 output tokens. At $0.10 and
 $0.50 per million: $0.0270, EUR 0.025. **Per 100 tickets: EUR 0.08.**
 
