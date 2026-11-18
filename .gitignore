@@ -11,3 +11,7 @@ logs/dry/
 docs/brief/*.pdf
 docs/brief/api_reference.md
 docs/brief/candidate_faq.md
+
+# Private files from Nordavo and my own notes. Never commit, wherever they are.
+*.pdf
+NORDAVO_MASTER_PROMPT.md

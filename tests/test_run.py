@@ -13,7 +13,7 @@ from eval.run_eval import grade
 from tests.fakes import FakeDesk, covered_form, fake_model, make_settings
 
 FAQ = llm.load_faq()
-HOWTO = "Hoe voeg ik een nieuwe medewerker toe aan het rooster?"
+HOWTO = "Waar in de app zet ik een collega op de planning?"
 REFUND = "Ik wil mijn geld terug. Mijn rekening is NL91 ABNA 0417 1643 00."
 
 
@@ -191,7 +191,8 @@ def test_other_email_is_refused(monkeypatch, clock, tmp_path):
 
 def do_reset(desk, clock, tmp_path, word="reset"):
     return reset(make_settings(), desk.client(clock), final_marker=tmp_path / ".final_run_done",
-                 say=lambda line: None, ask_user=lambda question: word)
+                 say=lambda line: None, ask_user=lambda question: word,
+                 log_dir=tmp_path / "logs")  # never the real logs folder
 
 
 def test_reset_reopens_tickets(monkeypatch, clock, tmp_path):

@@ -1,5 +1,5 @@
-anthropic
-httpx
-pydantic
-python-dotenv
-pytest
+anthropic==2.9.0
+httpx==0.28.1
+pydantic==2.14.3
+python-dotenv==1.2.4
+pytest==9.2.0

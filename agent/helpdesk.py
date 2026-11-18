@@ -176,7 +176,11 @@ class Helpdesk:
             return StopRun(status, "missing_email")
         if status == 409:
             return AlreadyHandled(status, "already_handled")
-        return TicketError(status, "request_rejected")
+        try:
+            problems = response.json().get("problems") or response.json().get("error")
+        except ValueError:
+            problems = None
+        return TicketError(status, f"request_rejected: {problems}" if problems else "request_rejected")
 
     def status(self, name=""):
         """Mode and ticket counts. The optional name header is sent only here."""
@@ -198,7 +202,10 @@ class Helpdesk:
                 params["cursor"] = cursor
             page = self.request("GET", "/tickets", params=params).json()
             for ticket in page["tickets"]:
-                tickets.setdefault(ticket["id"], ticket)
+                if isinstance(ticket, dict) and ticket.get("id"):
+                    tickets.setdefault(ticket["id"], ticket)
+                else:
+                    self.warning = "the ticket list held an entry without an id; it was skipped"
             cursor = page.get("next_cursor")
             if not cursor:  # last page
                 break

@@ -56,6 +56,24 @@ SPLIT_CANCEL = re.compile(
     re.IGNORECASE,
 )
 
+# The same verb at the end of a clause with no object: "..., dan zeg ik op." = "..., then I cancel."
+# Both word orders: "dan zeg ik op" and "wij zeggen op".
+PRONOUN = r"(?:ik|we|wij|jij|je|hij|zij|ze)"
+SPLIT_CANCEL_END = re.compile(
+    rf"(?<!\w)(?:zeg(?:t|gen)?\s+{PRONOUN}|{PRONOUN}\s+zeg(?:t|gen)?)\s+op\s*(?:[.!?,;]|$)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+# Someone else logged in: "iemand heeft op ons account ingelogd", "someone logged in", "jemand hat sich angemeldet".
+# Only the past tense counts, so "ik kan niet inloggen, kan iemand helpen?" does not match.
+STRANGER = r"(?:iemand|someone|somebody|jemand|onbekend\w*|unknown|fremd\w*|vreemd\w*)"
+LOGGED_IN = r"(?:ingelogd|logged\s+in(?:to)?|eingeloggt|angemeldet)"
+STRANGER_LOGIN = re.compile(
+    rf"(?<!\w){STRANGER}\W+(?:\w+\W+){{0,8}}?{LOGGED_IN}(?!\w)"
+    rf"|(?<!\w){LOGGED_IN}\W+(?:\w+\W+){{0,4}}?(?:door|by|von)\s+{STRANGER}(?!\w)",
+    re.IGNORECASE,
+)
+
 # Anything that looks like the tag we wrap ticket text in (see llm.py).
 TAG_LOOKALIKE = re.compile(r"<\s*/?\s*ticket_\w*", re.IGNORECASE)
 
@@ -90,8 +108,10 @@ def guard(subject, body):
         for topic, entry in PHRASES["tier1"].items()
         if found(entry["phrases"], text)
     ]
-    if "cancel" not in tier1 and SPLIT_CANCEL.search(text):
+    if "cancel" not in tier1 and (SPLIT_CANCEL.search(text) or SPLIT_CANCEL_END.search(text)):
         tier1.append("cancel")
+    if "security" not in tier1 and STRANGER_LOGIN.search(text):
+        tier1.append("security")
 
     injection = bool(
         found(PHRASES["injection"], text) or TAG_LOOKALIKE.search(html.unescape(raw))
@@ -105,7 +125,7 @@ def guard(subject, body):
 
 # ---- redaction ----
 
-SEP = r"[\s.\-/]{0,3}"  # people write spaces, dots, dashes, slashes or a line break
+SEP = r"[\s.\-/_,]{0,3}"  # spaces, dots, dashes, slashes, underscores, commas or a line break
 # Country code and check digits written together (NL91 ...), then 11 to 30 more characters.
 IBAN = re.compile(rf"\b[A-Z]{{2}}\d{{2}}(?:{SEP}[A-Z0-9]){{11,30}}", re.IGNORECASE)
 # Written apart, like "NL 91 ...". This also looks like normal text ("op 12 ..."),
@@ -125,7 +145,7 @@ def iban_checksum_ok(candidate):
     numbers (A=10 ... Z=35), and the result modulo 97 must be 1.
     Words after the IBAN may be part of the candidate, so whole blocks are
     dropped from the end, one at a time."""
-    blocks = re.split(r"[\s.\-/]+", candidate.upper())
+    blocks = re.split(r"[\s.\-/_,]+", candidate.upper())
     for keep in range(len(blocks), 0, -1):
         part = "".join(blocks[:keep])
         if 15 <= len(part) <= 34:
@@ -148,10 +168,23 @@ def card_end(text):
     """A card number is one block of digits, or blocks of four (or 4-6-5) typed
     with the same separator each time. A date range, a phone number or opening
     hours have other block sizes or mixed separators and are left alone."""
-    sizes = [len(block) for block in re.split(r"[\s.\-/]+", text)]
-    separators = {" " if sep.isspace() else sep for sep in re.findall(r"[\s.\-/]+", text)}
+    sizes = [len(block) for block in re.split(r"[\s.\-/_,]+", text)]
+    separators = {" " if sep.isspace() else sep for sep in re.findall(r"[\s.\-/_,]+", text)}
     shaped = (all(size == 4 for size in sizes[:-1]) and sizes[-1] <= 4) or sizes == [4, 6, 5]
-    return len(text) if len(sizes) == 1 or (shaped and len(separators) == 1) else None
+    if len(sizes) == 1 or (shaped and len(separators) == 1):
+        return len(text)
+    # Typed with mixed separators ("4111 1111-1111 1111"): still a card when the digits pass
+    # the Luhn check that every real card number passes. A date or phone number rarely does.
+    return len(text) if shaped and luhn_ok(re.sub(r"\D", "", text)) else None
+
+
+def luhn_ok(digits):
+    """The standard card-number checksum."""
+    total = 0
+    for index, char in enumerate(reversed(digits)):
+        number = int(char) * (2 if index % 2 else 1)
+        total += number - 9 if number > 9 else number
+    return 13 <= len(digits) <= 19 and total % 10 == 0
 
 
 def hide(pattern, text, find_end):
@@ -169,17 +202,25 @@ def hide(pattern, text, find_end):
     return "".join(parts) + text[position:]
 
 
+def prepare(text):
+    """The form redaction works on: invisible characters removed, wide digits made normal,
+    and quote marks or indents at the start of a wrapped line taken away, so a number
+    split over two quoted lines ("> NL91 ABNA\n> 0417 ...") is still one number."""
+    return re.sub(r"[ \t]*\n[ \t>]*", "\n", normalise(text))
+
+
 def redact(text):
     """Hide IBANs and card numbers. Used on every text that leaves the program."""
     if not text:
         return text
+    text = prepare(text)
     text = hide(IBAN, text, lambda found: iban_end(found, need_checksum=False))
     text = hide(IBAN_SPACED, text, lambda found: iban_end(found, need_checksum=True))
     return hide(CARD, text, card_end)
 
 
 def has_payment_details(text):
-    return bool(text) and redact(text) != text
+    return bool(text) and redact(text) != prepare(text)
 
 
 # ---- close signal ----

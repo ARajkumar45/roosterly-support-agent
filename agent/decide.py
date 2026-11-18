@@ -1,15 +1,20 @@
 """The decision. The model fills in a form (ModelOutput). This code reads the
 form and the guard result and picks the final action: reply, handoff or close.
 
-Order, first match wins:
- 1. must-handoff topic or injection          -> handoff
- 2. many users blocked right now (outage)    -> handoff, bug, P1
- 3. customer asks us to change their plan    -> handoff, billing, P2
- 4. close only if code AND model say close   -> close; if only one, handoff
- 5. FAQ does not cover it, or already tried  -> handoff
- 6. language is not nl, en or de             -> handoff
- 7. a reply check fails, or low confidence   -> handoff
- 8. otherwise                                -> reply
+The rules are small functions in RULES, checked in order. The first one that
+returns a decision wins:
+
+  injection            text tries to instruct the agent        -> handoff
+  must_handoff_topic   refund, cancel, gdpr, security, ...     -> handoff
+  too_long             the model could not read all of it      -> handoff
+  outage               many users blocked right now            -> handoff, bug, P1
+  plan_change          customer asks us to change the plan     -> handoff, billing, P2
+  close                code AND model say spam or empty        -> close (one only: handoff)
+  not_covered          the help centre does not answer it all  -> handoff
+  already_tried        the customer did the steps already      -> handoff
+  language             not nl, en or de, or a mismatch         -> handoff
+  model_chose_handoff  the model itself said handoff           -> handoff
+  checked_reply        all reply checks pass and sure enough   -> reply (else handoff)
 """
 
 import re
@@ -150,64 +155,65 @@ def entry_body(entry):
 
 def plain(text):
     """Model-written text for a note or reason: no markup, no links, no payment details."""
-    text = re.sub(r"<[^<>]{0,200}>", " ", text or "")
+    text = redact(re.sub(r"<[^<>]{0,200}>", " ", text or ""))  # redact first: an IBAN can look like a link
     text = re.sub(r"\S*://\S*", " ", text)
-    return " ".join(redact(URL.sub(" ", text)).split())
+    return " ".join(URL.sub(" ", text).split())
 
 
 # ---- reply checks ----
 
 
-# An amount of money or a percentage, like "€4", "4 euro" or "40%".
-MONEY = re.compile(
-    r"[€$£]\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*(?:€|euro|eur|procent|percent|prozent|%)",
-    re.IGNORECASE,
-)
+# A number next to money or time: "€4", "acht euro", "40%", "60 minuten", "two weeks".
+# Such a number must always come from the help centre, never from the ticket.
+UNIT = (r"(?:€|euro|eur|dollar|procent|percent|prozent|%|seconden|seconds?|sekunden?|"
+        r"minuten|minuut|minutes?|uur|uren|hours?|stunden?|dagen|dag|days?|tagen?|"
+        r"weken|week|weeks|wochen?|maanden|maand|months?|monaten?|monate|jaar|jaren|years?|jahren?|jahre)")
+# Two patterns, so "kost € 9" finds both "kost €" and "€ 9".
+MEASURE = [re.compile(rf"([\w.,]+)\s*{UNIT}(?!\w)", re.IGNORECASE), re.compile(r"[€$£]\s*([\w.,]+)")]
+QUOTED_SINGLE = re.compile(r"(?<!\w)['‘«]([^'‘’«»\n]{2,60})['’»](?!\w)")
+
+
+def fact_problems(draft, cited, ticket_text):
+    """Names of the fact checks a draft fails. Empty list: every fact is from the help centre.
+
+    cited is the text of the help-centre entries the model quoted. ticket_text is what the
+    customer wrote: a reply may repeat a number from it (a version number, say), but a
+    number next to money or time must always come from the help centre.
+    """
+    flat = squash(draft)
+    links = urls(draft) | {u.lower().rstrip(".,;:!?\"'>/") for u in re.findall(r"://(\S+)", draft)}
+    measured = " ".join(m for pattern in MEASURE for m in pattern.findall(draft))
+    names = QUOTED.findall(draft) + QUOTED_SINGLE.findall(draft) + LABEL_AFTER.findall(draft)
+    checks = {
+        "link": links <= urls(cited)
+        and not any(re.search(r"\w\.\w", word) and not word.isascii() for word in draft.split()),
+        "number": numbers(draft) <= numbers(cited) | numbers(ticket_text),
+        "money_or_time": numbers(measured) <= numbers(cited),
+        "menu_name": all(squash(name) in cited for name in names),
+        "menu_path": all(f"{a} → {b}" in cited for a, b in ARROW_STEP.findall(flat)),
+    }
+    return [name for name, ok in checks.items() if not ok]
 
 
 def reply_checks(out, faq, ticket_text=""):
-    """Each check is True when the draft passes it.
-
-    ticket_text is what the customer wrote. A reply may repeat the customer's own
-    numbers ("your iOS 15"), but never as a price: every amount of money or
-    percentage must come from the help centre.
-    """
+    """Each check is True when the draft passes it."""
     draft = out.draft_reply or ""
     # Only entries that answer a covered question AND were quoted count as sources.
     # Quoting an extra entry must not make its prices and links allowed.
     covered_ids = {q.faq_id for q in out.sub_questions if q.covered and q.faq_id}
     quoted_ids = {q.faq_id for q in out.faq_quotes}
     cited = squash(" ".join(entry_body(faq.get(i, "")) for i in covered_ids & quoted_ids))
-
     quotes_ok = bool(covered_ids) and covered_ids <= quoted_ids and all(
-        q.faq_id in faq
-        and len(q.quote.split()) >= 3
-        and squash(q.quote) in squash(faq[q.faq_id])
+        q.faq_id in faq and len(q.quote.split()) >= 3 and squash(q.quote) in squash(faq[q.faq_id])
         for q in out.faq_quotes
     )
-
-    flat = squash(draft)
-    schemes = {u.lower().rstrip(".,;:!?\"'>/") for u in re.findall(r"://(\S+)", draft)}
-    odd_link = any(re.search(r"\w\.\w", word) and not word.isascii() for word in draft.split())
-    facts_ok = (
-        urls(draft) <= urls(cited)
-        and schemes <= urls(cited)
-        and not odd_link
-        and numbers(draft) <= numbers(cited) | numbers(ticket_text)
-        and numbers(" ".join(MONEY.findall(draft))) <= numbers(cited)
-        and all(squash(label) in cited for label in QUOTED.findall(draft))
-        and all(f"{a} → {b}" in cited for a, b in ARROW_STEP.findall(flat))
-        and all(squash(label) in cited for label in LABEL_AFTER.findall(draft))
-    )
-
     # A reply never talks about a must-handoff topic (refund, cancel, ...) and never promises.
     topic_words = any(found(entry["phrases"], draft) for entry in PHRASES["tier1"].values())
-    language, _ = detect(draft)
     return {
         "quotes": quotes_ok,
-        "facts": facts_ok,
+        "facts": not fact_problems(draft, cited, ticket_text),
         "promises": not found(PHRASES["banned_in_reply"], draft) and not topic_words,
-        "language": language == out.language or len(draft.split()) < 8,
+        "language": detect(draft)[0] == out.language or len(draft.split()) < 8,
         "payment": not has_payment_details(draft),
     }
 
@@ -218,7 +224,14 @@ PROMISE_IN_ENGLISH = re.compile(
     r"cancell?ed|refunded|scheduled|fixed|updated|changed|informed|asked|escalated))\b"
     r"|\b(?:refund\w*|call you|contact you|get back to you|tomorrow|today|soon|shortly|"
     r"next (?:week|month|quarter)|january|february|march|april|june|july|august|september|"
-    r"october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+    r"october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b"
+    # Someone will act, or something will happen by a time: a promise in any form.
+    r"|\b(?:colleague|someone|somebody|support|team|our|they|it|this)\b[^.!?\n]{0,40}"
+    r"\b(?:will|'ll|is going to|are going to)\b"
+    r"|\bwill be (?:added|built|fixed|supported|released|available|solved|resolved|refunded|"
+    r"changed|updated|corrected|checked|looked at)\b"
+    r"|\bwithin (?:\d+|a|an|one|two|three|four|five|a few|several) "
+    r"(?:minutes?|hours?|days?|weeks?|months?|business days?|working days?)\b",
     re.IGNORECASE,
 )
 ALWAYS_KNOWN = {"roosterly", "team", "i"}
@@ -231,14 +244,18 @@ def view_matches(draft, english_view):
     )
 
 
-def view_problems(draft, english_view, known_text):
+def view_problems(draft, english_view, known_text, faq_text=""):
     """Check the English back-translation of a draft. Returns the names of failed checks.
 
     known_text is the cited help-centre entries plus the ticket. Any capitalised
     word in the middle of a sentence (a name, a menu, a product) must come from there.
+    faq_text is the cited help-centre entries only. A phrase that looks like a promise
+    but is written in the help centre itself ("no email within 10 minutes?") is allowed.
     """
     problems = [] if view_matches(draft, english_view) else ["numbers_or_links"]
-    if PROMISE_IN_ENGLISH.search(english_view or ""):
+    source = squash(faq_text)
+    if any(squash(match.group(0)) not in source
+           for match in PROMISE_IN_ENGLISH.finditer(english_view or "")):
         problems.append("promise")
     known = set(re.findall(r"[a-zà-ÿ0-9]+", known_text.lower())) | ALWAYS_KNOWN
     for sentence in re.split(r"(?<=[.!?:])\s+|\n+", english_view or ""):
@@ -315,154 +332,168 @@ def fallback(ticket, guard):
 # ---- the decision ----
 
 
+@dataclass
+class Case:
+    """Everything the rules look at for one ticket."""
+
+    ticket: dict
+    guard: object
+    out: ModelOutput
+    faq: dict
+    threshold: float
+
+    def __post_init__(self):
+        self.plan = self.ticket.get("customer_plan") or "unknown"
+        self.text = strip_html(f"{self.ticket.get('subject') or ''}\n{self.ticket.get('body') or ''}")
+        self.faq_ids = sorted({q.faq_id for q in self.out.sub_questions if q.covered and q.faq_id})
+        # Must-handoff topics: found by the code guard OR named by the model.
+        self.topics = list(self.guard.tier1)
+        if self.out.must_handoff_topic not in ("none", *self.topics):
+            self.topics.append(self.out.must_handoff_topic)
+
+    def handoff(self, key, cause, category=None, priority=None, summary=True, hint=""):
+        category, priority = category or self.out.category, priority or self.out.priority
+        return Decision(
+            action="handoff", language=self.out.language, category=category, priority=priority,
+            reason=f"{cause} Handed to a human as {category}, {priority}.",
+            handoff_note=build_note(self.out.summary if summary else "", cause, self.plan, hint),
+            handoff_reason=key, faq_ids=self.faq_ids,
+        )
+
+
+def injection(case):
+    if case.guard.injection:
+        found_also = f" Guard also found: {', '.join(case.topics)}." if case.topics else ""
+        priority = "P3" if case.out.priority == "P4" else case.out.priority
+        return case.handoff(
+            "injection",
+            "The ticket contains text that tries to give the agent instructions. "
+            "It was not followed." + found_also,
+            priority=apply_floor(priority, case.topics),
+            summary=False,  # never repeat injected text
+        )
+
+
+def must_handoff_topic(case):
+    if case.topics:
+        hint = f"Suggested answer for the how-to part: FAQ {', '.join(case.faq_ids)}." if case.faq_ids else ""
+        return case.handoff(
+            "must_handoff:" + ",".join(case.topics),
+            f"Client rule: {', '.join(case.topics)} always go to a human.",
+            priority=apply_floor(case.out.priority, case.topics),
+            hint=hint,
+        )
+
+
+def too_long(case):
+    if case.guard.too_long:
+        return case.handoff("too_long", "The ticket is too long for the model to read in full.")
+
+
+def outage(case):
+    if case.out.many_users_blocked:
+        return case.handoff(
+            "outage", "Many users or locations are blocked right now. Check status.roosterly.nl.",
+            category="bug", priority="P1",
+        )
+
+
+def plan_change(case):
+    if case.out.asks_plan_change:  # a change to the plan is a contract change
+        return case.handoff(
+            "plan_change", "The customer asks us to change their plan, which is a contract change.",
+            category="billing", priority=apply_floor(case.out.priority, ["cancel"]),
+        )
+
+
+def close(case):
+    """Close needs both the code signal and the model. If only one says close, a human looks."""
+    code_says, model_says = case.guard.close_signal, case.out.action == "close"
+    if code_says and model_says:
+        return Decision(
+            action="close", language=case.out.language, category="other", priority="P4",
+            reason=f"The ticket is {code_says}. Closed without action, other, P4.",
+            confidence=case.out.confidence,
+        )
+    if code_says or model_says:
+        # When only the code sees spam or empty, the model's category and priority stand.
+        return case.handoff(
+            "close_disagree",
+            f"Close check disagreed: code says {code_says or 'not empty or spam'}, "
+            f"model says {'close' if model_says else 'do not close'}.",
+            category="other" if model_says else None,
+            priority="P4" if model_says else None,
+        )
+
+
+def not_covered(case):
+    questions = case.out.sub_questions
+    if not questions or not all(q.covered for q in questions):
+        return case.handoff("not_covered", "The help centre does not fully answer this ticket.")
+
+
+def already_tried(case):
+    if case.out.already_tried or found(PHRASES["already_tried"], case.text):
+        return case.handoff("already_tried", "The customer already tried the help-centre steps.")
+
+
+def language(case):
+    """We only reply in Dutch, English or German, and only when sure which."""
+    ticket_language, lead = detect(case.text)
+    draft_language, draft_lead = detect(case.out.draft_reply or "")
+    if case.out.language == "other":
+        return case.handoff("language", "The ticket is not in Dutch, English or German.")
+    if lead >= 3 and ticket_language != case.out.language:
+        return case.handoff("language", "Code and model disagree on the ticket language.")
+    if case.out.action == "reply" and lead >= 1 and draft_lead >= 1 and draft_language != ticket_language:
+        return case.handoff("language", "The draft is not in the language the customer wrote in.")
+
+
+def model_chose_handoff(case):
+    out = case.out
+    if out.action == "reply" and (out.draft_reply or "").strip():
+        return None
+    note = plain(out.handoff_note)
+    note_language, note_lead = detect(note)
+    if not note or len(note.split()) > 60 or (note_language != "en" and note_lead >= 2):
+        note = build_note(out.summary, "The model chose handoff.", case.plan)
+    return Decision(
+        action="handoff", language=out.language, category=out.category, priority=out.priority,
+        reason=model_reason(out), handoff_note=note, confidence=out.confidence,
+        handoff_reason="model", faq_ids=case.faq_ids,
+    )
+
+
+def checked_reply(case):
+    """The last rule: reply only if every check passes and the model is sure enough."""
+    out = case.out
+    checks = reply_checks(out, case.faq, case.text)
+    failed = [name for name, ok in checks.items() if not ok]
+    if failed:
+        decision = case.handoff("check_failed:" + ",".join(failed),
+                                f"The draft reply failed a safety check ({', '.join(failed)}).")
+    elif out.confidence < case.threshold:
+        decision = case.handoff("low_confidence", "The model was not sure enough to reply.")
+    else:
+        decision = Decision(
+            action="reply", language=out.language, category=out.category, priority=out.priority,
+            reason=model_reason(out), draft_reply=out.draft_reply, confidence=out.confidence,
+            faq_ids=case.faq_ids,
+        )
+    decision.checks = checks
+    return decision
+
+
+RULES = [injection, must_handoff_topic, too_long, outage, plan_change, close,
+         not_covered, already_tried, language, model_chose_handoff, checked_reply]
+
+
 def decide(ticket, guard, out, faq, threshold):
     """Return the final Decision. `out` is None when the model step failed."""
     if out is None:
         return fallback(ticket, guard)
-
-    plan = ticket.get("customer_plan") or "unknown"
-    text = strip_html(f"{ticket.get('subject') or ''}\n{ticket.get('body') or ''}")
-    faq_ids = sorted({q.faq_id for q in out.sub_questions if q.covered and q.faq_id})
-
-    def handoff(key, cause, category=None, priority=None, summary=True, hint=""):
-        category, priority = category or out.category, priority or out.priority
-        return Decision(
-            action="handoff",
-            language=out.language,
-            category=category,
-            priority=priority,
-            reason=f"{cause} Handed to a human as {category}, {priority}.",
-            handoff_note=build_note(out.summary if summary else "", cause, plan, hint),
-            handoff_reason=key,
-            faq_ids=faq_ids,
-        )
-
-    # 1. Must-handoff topic (code guard OR model) or an injection attempt.
-    topics = list(guard.tier1)
-    if out.must_handoff_topic != "none" and out.must_handoff_topic not in topics:
-        topics.append(out.must_handoff_topic)
-    if guard.injection:
-        priority = apply_floor("P3" if out.priority == "P4" else out.priority, topics)
-        return handoff(
-            "injection",
-            "The ticket contains text that tries to give the agent instructions. "
-            "It was not followed." + (f" Guard also found: {', '.join(topics)}." if topics else ""),
-            priority=priority,
-            summary=False,  # never repeat injected text
-        )
-    if topics:
-        rules = f"{', '.join(topics)} always go to a human."
-        hint = (
-            f"Suggested answer for the how-to part: FAQ {', '.join(faq_ids)}."
-            if faq_ids
-            else ""
-        )
-        return handoff(
-            "must_handoff:" + ",".join(topics),
-            f"Client rule: {rules}",
-            priority=apply_floor(out.priority, topics),
-            hint=hint,
-        )
-
-    if guard.too_long:
-        return handoff(
-            "too_long", "The ticket is too long for the model to read in full."
-        )
-
-    # 2. Outage: many users or locations cannot work right now.
-    if out.many_users_blocked:
-        return handoff(
-            "outage",
-            "Many users or locations are blocked right now. Check status.roosterly.nl.",
-            category="bug",
-            priority="P1",
-        )
-
-    # 3. The customer asks us to change the plan. That is a contract change.
-    if out.asks_plan_change:
-        return handoff(
-            "plan_change",
-            "The customer asks us to change their plan, which is a contract change.",
-            category="billing",
-            priority=apply_floor(out.priority, ["cancel"]),
-        )
-
-    # 4. Close needs both the code signal and the model.
-    model_close = out.action == "close"
-    if guard.close_signal and model_close:
-        return Decision(
-            action="close",
-            language=out.language,
-            category="other",
-            priority="P4",
-            reason=f"The ticket is {guard.close_signal}. Closed without action, other, P4.",
-            confidence=out.confidence,
-        )
-    if guard.close_signal or model_close:
-        # When only the code sees spam or empty, the model's category and priority stand.
-        return handoff(
-            "close_disagree",
-            f"Close check disagreed: code says {guard.close_signal or 'not empty or spam'}, "
-            f"model says {'close' if model_close else 'do not close'}.",
-            category="other" if model_close else None,
-            priority="P4" if model_close else None,
-        )
-
-    # 5. The FAQ must cover every question, and the customer must not have tried it.
-    if not out.sub_questions or not all(q.covered for q in out.sub_questions):
-        return handoff("not_covered", "The help centre does not fully answer this ticket.")
-    if out.already_tried or found(PHRASES["already_tried"], text):
-        return handoff(
-            "already_tried", "The customer already tried the help-centre steps."
-        )
-
-    # 6. We only reply in Dutch, English or German, and only when sure which.
-    language, lead = detect(text)
-    if out.language == "other":
-        return handoff("language", "The ticket is not in Dutch, English or German.")
-    if lead >= 3 and language != out.language:
-        return handoff("language", "Code and model disagree on the ticket language.")
-
-    # 7. The model itself chose handoff, or the draft fails a check.
-    if out.action != "reply" or not (out.draft_reply or "").strip():
-        note = plain(out.handoff_note)
-        note_language, note_lead = detect(note)
-        if not note or len(note.split()) > 60 or (note_language != "en" and note_lead >= 2):
-            note = build_note(out.summary, "The model chose handoff.", plan)
-        return Decision(
-            action="handoff",
-            language=out.language,
-            category=out.category,
-            priority=out.priority,
-            reason=model_reason(out),
-            handoff_note=note,
-            confidence=out.confidence,
-            handoff_reason="model",
-            faq_ids=faq_ids,
-        )
-    checks = reply_checks(out, faq, text)
-    failed = [name for name, ok in checks.items() if not ok]
-    if failed:
-        decision = handoff(
-            "check_failed:" + ",".join(failed),
-            f"The draft reply failed a safety check ({', '.join(failed)}).",
-        )
-        decision.checks = checks
-        return decision
-    if out.confidence < threshold:
-        decision = handoff("low_confidence", "The model was not sure enough to reply.")
-        decision.checks = checks
-        return decision
-
-    # 8. Reply.
-    return Decision(
-        action="reply",
-        language=out.language,
-        category=out.category,
-        priority=out.priority,
-        reason=model_reason(out),
-        draft_reply=out.draft_reply,
-        confidence=out.confidence,
-        faq_ids=faq_ids,
-        checks=checks,
-    )
+    case = Case(ticket, guard, out, faq, threshold)
+    for rule in RULES:
+        decision = rule(case)
+        if decision is not None:
+            return decision

@@ -18,12 +18,10 @@ import time
 from collections import Counter
 from datetime import datetime, timezone
 
-from pydantic import ValidationError
-
 from agent import config, llm
 from agent.decide import decide, to_handoff, view_problems
-from agent.helpdesk import GaveUp, Helpdesk, HelpdeskError, StopRun, TicketError, build_body
-from agent.logs import write_line
+from agent.helpdesk import GaveUp, Helpdesk, HelpdeskError, StopRun, build_body
+from agent.logs import finished_ids, write_line
 from agent.rules import guard, redact
 
 MAX_PROVIDER_FAILURES = 3  # this many tickets in a row without a model answer: stop
@@ -34,11 +32,13 @@ def utc_now():
 
 
 def commit_hash():
+    """The commit the code comes from, with "-dirty" when tracked files differ from it."""
     try:
-        return subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, cwd=config.ROOT, check=True,
-        ).stdout.strip()
+        def git(*args):
+            return subprocess.run(["git", *args], capture_output=True, text=True,
+                                  cwd=config.ROOT, check=True).stdout.strip()
+        changed = git("status", "--porcelain", "--untracked-files=no", "--", "agent", "eval/run_eval.py")
+        return git("rev-parse", "--short", "HEAD") + ("-dirty" if changed else "")
     except (OSError, subprocess.CalledProcessError):
         return "unknown"
 
@@ -75,7 +75,8 @@ def triage(ticket, settings, faq):
         tokens_in, tokens_out = tokens_in + more_in, tokens_out + more_out
         known = " ".join([*(faq.get(i, "") for i in decision.faq_ids),
                           str(ticket.get("subject")), str(ticket.get("body"))])
-        problems = view_problems(decision.draft_reply, view, known)
+        cited = " ".join(faq.get(i, "") for i in decision.faq_ids)
+        problems = view_problems(decision.draft_reply, view, known, cited)
         decision.checks["english_view"] = not problems
         if problems:
             decision = to_handoff(
@@ -95,35 +96,132 @@ def check_account(email, marker):
     return True
 
 
+class Run:
+    """One run: its id, its log file and its counts."""
+
+    def __init__(self, settings, dry_run, log_dir, say):
+        self.settings, self.dry_run, self.say = settings, dry_run, say
+        self.id = "run-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        self.log_path = (log_dir / "dry" if dry_run else log_dir) / f"{self.id}.jsonl"
+        self.model = settings.model or "none (rules only)"
+        self.counts, self.reasons, self.outcomes, self.failed = Counter(), Counter(), Counter(), []
+        self.cost, self.stopped, self.started = 0.0, "", time.monotonic()
+        self.provider_failures = 0  # tickets in a row without a model answer
+
+    def log(self, ticket_id, began=None, **fields):
+        record = {"run_id": self.id, "ticket_id": ticket_id, "ts": utc_now(), **fields}
+        if began is not None:
+            record["latency_ms"] = round((time.monotonic() - began) * 1000)
+        write_line(self.log_path, {**record, "model": self.model, "commit": commit_hash()})
+
+    def left_open(self, ticket_id, error, began):
+        """A ticket we could not finish still gets its log line. A re-run picks it up."""
+        self.failed.append(ticket_id)
+        problem = f"{type(error).__name__} {redact(str(error))[:200]}"
+        print(f"{ticket_id} left open: {problem}", file=sys.stderr)
+        self.log(ticket_id, began, outcome="failed_left_open", error=problem)
+
+
+def refuse_to_start(settings, dry_run, marker, final_marker):
+    """A reason not to run at all, or None."""
+    if settings.email.count("@") != 1:
+        return "CANDIDATE_EMAIL is missing or not an email address. Check .env."
+    if not check_account(settings.email, marker):
+        return "CANDIDATE_EMAIL differs from the one used before in this repo. Refusing to run."
+    if not dry_run and final_marker.exists():
+        return "The final run is done (.final_run_done exists). A real run is refused."
+    if not dry_run and not settings.provider:
+        return "No model is set (LLM_PROVIDER). A real run needs one. Use --dry-run for rules only."
+    return None
+
+
+def collect(run, helpdesk, log_dir):
+    """Read the tickets to handle. A real run also writes any log line a crash missed."""
+    status = helpdesk.status(run.settings.name)
+    run.say(f"Account {mask(run.settings.email)}  mode {status.get('mode')}  "
+            f"open {status.get('open_tickets')}  handled {status.get('handled_tickets')}")
+    tickets = helpdesk.list_tickets("all" if run.dry_run else "open")
+    if helpdesk.warning:
+        run.say(f"WARNING: {helpdesk.warning}. The ticket list may be incomplete.")
+    if not run.dry_run:
+        # A crash can fall between "decision saved" and "log line written".
+        # Such a ticket is handled in the helpdesk but has no line. Give it one now.
+        open_ids = {ticket["id"] for ticket in tickets}
+        missing = [t["id"] for t in helpdesk.list_tickets("all")
+                   if t["id"] not in open_ids and t["id"] not in finished_ids(log_dir)]
+        for ticket_id in missing:
+            run.log(ticket_id, outcome="posted_found_on_restart",
+                    note="Handled in the helpdesk by an earlier run that stopped before "
+                         "it could write this line.")
+        if missing:
+            run.say(f"Wrote {len(missing)} missing log line(s) for tickets handled before a crash.")
+    return tickets
+
+
+def handle(run, helpdesk, ticket, faq):
+    """Decide one ticket, post it (unless dry run) and write its log line."""
+    began = time.monotonic()
+    ticket_id = ticket.get("id", "unknown") if isinstance(ticket, dict) else "unknown"
+    decision, found, view, tokens_in, tokens_out = triage(ticket, run.settings, faq)
+    run.provider_failures = 0  # the model answered
+    body = build_body(decision.action, decision.fields())  # what is (or would be) sent
+    if run.dry_run:
+        outcome = "dry_run"
+    else:
+        outcome = helpdesk.post_action(ticket_id, decision.action, decision.fields())
+
+    ticket_cost = config.cost_eur(run.settings.model, tokens_in, tokens_out)
+    run.cost += ticket_cost
+    run.log(
+        ticket_id, began,
+        language=decision.language, category=decision.category,
+        priority=decision.priority, action=decision.action,
+        reason=decision.reason, faq_ids=decision.faq_ids, confidence=decision.confidence,
+        guard={"tier1": found.tier1, "tier2": found.tier2,
+               "injection": found.injection, "close_signal": found.close_signal},
+        handoff_reason=decision.handoff_reason, checks=decision.checks,
+        sent=body,  # the exact decision body, so every posted text can be audited
+        english_view=view, outcome=outcome,
+        tokens={"in": tokens_in, "out": tokens_out}, cost_eur=round(ticket_cost, 6),
+    )
+    run.counts[decision.action] += 1
+    run.outcomes[outcome] += 1
+    if decision.handoff_reason:
+        run.reasons[decision.handoff_reason.split(":")[0]] += 1
+    run.say(f"{ticket_id}  {decision.action:8} {decision.category:15} {decision.priority}  "
+            f"{redact(decision.reason)[:90]}")
+
+
+def summary(run, total):
+    done = sum(run.counts.values())
+    say = run.say
+    say(f"\nSummary {run.id}: {done} of {total} tickets decided in "
+        f"{time.monotonic() - run.started:.0f} s, cost EUR {run.cost:.4f}")
+    say(f"  actions: {dict(run.counts)}")
+    say(f"  handoff reasons: {dict(run.reasons)}  handoff rate: {run.counts['handoff']}/{done or 1}")
+    say(f"  outcomes: {dict(run.outcomes)}  409 count: {run.outcomes['already_handled_409']}")
+    say(f"  left open: {total - done} {run.failed if run.failed else ''}")
+    if run.stopped:
+        say(f"  stopped early: {run.stopped}. Run again to finish the open tickets.")
+    if done or run.failed:
+        say(f"  log: {run.log_path}")
+    return 1 if (run.failed or run.stopped) else 0
+
+
 def run(settings, helpdesk, dry_run, tickets=None, assume_yes=False,
         log_dir=config.ROOT / "logs", marker=config.ROOT / ".agent_account",
         final_marker=config.ROOT / ".final_run_done", say=print, ask_user=input):
     """Returns the exit code: 0 all done, 1 some tickets left open, 2 cannot run."""
-    if settings.email.count("@") != 1:
-        say("CANDIDATE_EMAIL is missing or not an email address. Check .env.")
-        return 2
-    if not check_account(settings.email, marker):
-        say("CANDIDATE_EMAIL differs from the one used before in this repo. Refusing to run.")
-        return 2
-    if not dry_run and final_marker.exists():
-        say("The final run is done (.final_run_done exists). A real run is refused.")
-        return 2
-    if not dry_run and not settings.provider:
-        say("No model is set (LLM_PROVIDER). A real run needs one. Use --dry-run for rules only.")
+    refusal = refuse_to_start(settings, dry_run, marker, final_marker)
+    if refusal:
+        say(refusal)
         return 2
 
-    run_id = "run-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    log_path = (log_dir / "dry" if dry_run else log_dir) / f"{run_id}.jsonl"
-    model = settings.model or "none (rules only)"
+    current = Run(settings, dry_run, log_dir, say)
     try:
         if tickets is None:
-            status = helpdesk.status(settings.name)
-            say(f"Account {mask(settings.email)}  mode {status.get('mode')}  "
-                f"open {status.get('open_tickets')}  handled {status.get('handled_tickets')}")
-            tickets = helpdesk.list_tickets("all" if dry_run else "open")
-            if helpdesk.warning:
-                say(f"WARNING: {helpdesk.warning}. The ticket list may be incomplete.")
-        say(f"{run_id}  commit {commit_hash()}  model {model}  collected {len(tickets)} ids  "
+            tickets = collect(current, helpdesk, log_dir)
+        say(f"{current.id}  commit {commit_hash()}  model {current.model}  collected {len(tickets)} ids  "
             f"spend cap EUR {settings.spend_cap_eur:.2f}")
     except StopRun as error:
         say(f"The helpdesk refused us ({error}). Check the key and email in .env.")
@@ -142,86 +240,31 @@ def run(settings, helpdesk, dry_run, tickets=None, assume_yes=False,
             return 2
 
     faq = llm.load_faq()
-    counts, reasons, outcomes, failed = Counter(), Counter(), Counter(), []
-
-    def left_open(ticket_id, error, began):
-        """A ticket we could not finish still gets its log line. A re-run picks it up."""
-        failed.append(ticket_id)
-        problem = f"{type(error).__name__} {redact(str(error))[:200]}"
-        print(f"{ticket_id} left open: {problem}", file=sys.stderr)
-        write_line(log_path, {
-            "run_id": run_id, "ticket_id": ticket_id, "ts": utc_now(),
-            "outcome": "failed_left_open", "error": problem,
-            "latency_ms": round((time.monotonic() - began) * 1000),
-            "model": model, "commit": commit_hash(),
-        })
-    cost, provider_failures, stopped, started = 0.0, 0, "", time.monotonic()
     try:
         for ticket in tickets:
-            ticket_id, began = ticket["id"], time.monotonic()
+            began = time.monotonic()
+            ticket_id = ticket.get("id", "unknown") if isinstance(ticket, dict) else "unknown"
             try:
-                decision, found, view, tokens_in, tokens_out = triage(ticket, settings, faq)
-                provider_failures = 0
-                if dry_run:
-                    build_body(decision.action, decision.fields())  # still check the body
-                    outcome = "dry_run"
-                else:
-                    outcome = helpdesk.post_action(ticket_id, decision.action, decision.fields())
+                handle(current, helpdesk, ticket, faq)
             except StopRun as error:
                 say(f"The helpdesk refused us ({error}). Stopping.")
                 return 2
             except llm.ProviderDown as error:
-                provider_failures += 1
-                left_open(ticket_id, error, began)
-                if provider_failures >= MAX_PROVIDER_FAILURES:
-                    stopped = "the model failed on 3 tickets in a row"
+                current.provider_failures += 1
+                current.left_open(ticket_id, error, began)
+                if current.provider_failures >= MAX_PROVIDER_FAILURES:
+                    current.stopped = "the model failed on 3 tickets in a row"
                     break
                 continue
-            except (GaveUp, TicketError, ValidationError) as error:
-                left_open(ticket_id, error, began)
+            except Exception as error:  # anything else: this ticket stays open, the run goes on
+                current.left_open(ticket_id, error, began)
                 continue
-
-            ticket_cost = config.cost_eur(settings.model, tokens_in, tokens_out)
-            cost += ticket_cost
-            write_line(log_path, {
-                "run_id": run_id, "ticket_id": ticket_id, "ts": utc_now(),
-                "language": decision.language, "category": decision.category,
-                "priority": decision.priority, "action": decision.action,
-                "reason": decision.reason, "faq_ids": decision.faq_ids,
-                "confidence": decision.confidence,
-                "guard": {"tier1": found.tier1, "tier2": found.tier2,
-                          "injection": found.injection, "close_signal": found.close_signal},
-                "handoff_reason": decision.handoff_reason, "checks": decision.checks,
-                "english_view": view, "outcome": outcome,
-                "latency_ms": round((time.monotonic() - began) * 1000),
-                "tokens": {"in": tokens_in, "out": tokens_out},
-                "cost_eur": round(ticket_cost, 6), "model": model, "commit": commit_hash(),
-            })
-            counts[decision.action] += 1
-            outcomes[outcome] += 1
-            if decision.handoff_reason:
-                reasons[decision.handoff_reason.split(":")[0]] += 1
-            say(f"{ticket_id}  {decision.action:8} {decision.category:15} {decision.priority}  "
-                f"{redact(decision.reason)[:90]}")
-            if cost > settings.spend_cap_eur:
-                stopped = "the spend cap was reached (raise SPEND_CAP_EUR to continue)"
+            if current.cost > settings.spend_cap_eur:
+                current.stopped = "the spend cap was reached (raise SPEND_CAP_EUR to continue)"
                 break
     except KeyboardInterrupt:
-        stopped = "interrupted by the user"
-
-    done = sum(counts.values())
-    say(f"\nSummary {run_id}: {done} of {len(tickets)} tickets decided in "
-        f"{time.monotonic() - started:.0f} s, cost EUR {cost:.4f}")
-    say(f"  actions: {dict(counts)}")
-    say(f"  handoff reasons: {dict(reasons)}  "
-        f"handoff rate: {counts['handoff']}/{done or 1}")
-    say(f"  outcomes: {dict(outcomes)}  409 count: {outcomes['already_handled_409']}")
-    say(f"  left open: {len(tickets) - done} {failed if failed else ''}")
-    if stopped:
-        say(f"  stopped early: {stopped}. Run again to finish the open tickets.")
-    if done or failed:
-        say(f"  log: {log_path}")
-    return 1 if (failed or stopped) else 0
+        current.stopped = "interrupted by the user"
+    return summary(current, len(tickets))
 
 
 def main(argv=None):

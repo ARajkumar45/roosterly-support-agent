@@ -10,11 +10,14 @@ import sys
 
 from agent import config
 from agent.helpdesk import Helpdesk, HelpdeskError
+from agent.logs import archive
+from agent.run import utc_now
 
 FINAL_MARKER = config.ROOT / ".final_run_done"
 
 
-def reset(settings, helpdesk, final_marker=FINAL_MARKER, say=print, ask_user=input):
+def reset(settings, helpdesk, final_marker=FINAL_MARKER, say=print, ask_user=input,
+          log_dir=config.ROOT / "logs"):
     if final_marker.exists():
         say("The final run is done (.final_run_done exists). Reset refused.")
         return 2
@@ -33,6 +36,8 @@ def reset(settings, helpdesk, final_marker=FINAL_MARKER, say=print, ask_user=inp
         say(f"The helpdesk gave an error ({error}). Check GET /status before trying again.")
         return 1
     say(f"Reset done: open {status.get('open_tickets')}, handled {status.get('handled_tickets')}.")
+    moved = archive(log_dir, "before_reset_" + utc_now().replace(":", ""))
+    say(f"Moved {moved} old run log(s) aside. The next run starts with an empty log folder.")
     return 0
 
 

@@ -4,7 +4,7 @@ shown on text written for the test."""
 import pytest
 
 from agent import llm
-from agent.decide import ModelOutput, decide, reply_checks, view_problems
+from agent.decide import reply_checks, view_problems
 from agent.rules import close_signal, guard, redact
 from tests.test_decide import FAQ as SMALL_FAQ
 from tests.test_decide import GOOD_DRAFT, HOWTO, form, run

@@ -22,7 +22,12 @@
         "dubbel betaald": "paid twice",
         "charged twice": "charged twice",
         "double charged": "double charged",
-        "doppelt abgebucht": "debited twice"
+        "doppelt abgebucht": "debited twice",
+        "refunded": "refunded",
+        "billed twice": "billed twice",
+        "overcharged": "charged too much",
+        "te veel betaald": "paid too much",
+        "zu viel bezahlt": "paid too much"
       }
     },
     "cancel": {
@@ -50,7 +55,16 @@
         "willen opzeggen": "want to cancel (plural)",
         "want to cancel": "want to cancel",
         "cancel my account": "cancel my account",
-        "kündigen": "to cancel"
+        "kündigen": "to cancel",
+        "opzeggen": "to cancel",
+        "opzegging": "cancellation",
+        "kündige": "I cancel",
+        "cancel our subscription": "cancel our subscription",
+        "cancel the subscription": "cancel the subscription",
+        "account verwijderen": "delete the account",
+        "verwijder mijn account": "delete my account",
+        "delete my account": "delete my account",
+        "delete our account": "delete our account"
       }
     },
     "gdpr": {
@@ -80,7 +94,11 @@
         "data breach": "data breach",
         "hacked": "hacked",
         "account is overgenomen": "account was taken over",
-        "unauthorized access": "unauthorized access"
+        "unauthorized access": "unauthorized access",
+        "logged into my account": "someone logged into my account",
+        "logged into our account": "someone logged into our account",
+        "ingelogd op mijn account": "logged into my account",
+        "ingelogd op ons account": "logged into our account"
       }
     },
     "legal": {
@@ -97,7 +115,13 @@
         "Anwalt": "lawyer (German)",
         "rechtliche Schritte": "legal steps (German)",
         "lawyer": "lawyer",
-        "legal action": "legal action"
+        "legal action": "legal action",
+        "advocaten": "lawyers",
+        "lawyers": "lawyers",
+        "attorney": "attorney",
+        "Rechtsanwalt": "lawyer",
+        "sue you": "sue you",
+        "verklagen": "to sue"
       }
     },
     "churn": {
@@ -228,5 +252,15 @@
     "sechzig": 60,
     "hundert": 100
   },
-  "signatures": ["Verstuurd vanaf mijn", "Sent from my", "Gesendet von meinem"]
+  "signatures": [
+    "Verstuurd vanaf mijn",
+    "Sent from my",
+    "Gesendet von meinem",
+    "Verzonden vanaf mijn",
+    "Verzonden via",
+    "Verstuurd via",
+    "Sent from",
+    "Get Outlook for",
+    "Von meinem"
+  ]
 }
