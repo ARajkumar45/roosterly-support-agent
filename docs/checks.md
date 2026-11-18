@@ -25,5 +25,5 @@ My answer: I did not know.
 
 What I learned: a 503 means nothing was saved, so sending again is safe. A 409 means an
 answer is already saved for this ticket. Sending again can never succeed, and if it did,
-the customer would get two answers. So on a 409 the program stops for that ticket, looks
-up how it was handled, and counts it. It never sends a second time.
+the customer would get two answers. So on a 409 the program stops for that ticket and
+counts it in the summary. It never sends a second time.
