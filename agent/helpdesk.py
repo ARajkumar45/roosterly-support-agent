@@ -165,7 +165,8 @@ class Helpdesk:
             seconds = float(response.headers.get("Retry-After", ""))
         except ValueError:
             seconds = 1.0
-        return min(30.0, max(0.1, seconds)) + self.rng(0, 0.25)
+        # Waiting less than the helpdesk asks only earns another 429. 300 s caps a broken header.
+        return min(300.0, max(0.1, seconds)) + self.rng(0, 0.25)
 
     def error_for(self, response):
         """Pick the error type from the status code."""

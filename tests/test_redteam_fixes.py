@@ -34,9 +34,12 @@ def test_heading_id_is_not_an_allowed_number():
     assert check("Het kost €5 per persoon.")["facts"] is False  # 5 only appears in "F05"
 
 
-def test_extra_quoted_entry_does_not_allow_its_numbers():
+def test_only_quoted_entries_allow_their_numbers():
+    # Second review: an answer may need two entries, so every entry quoted word for word
+    # is a source. An entry that was not quoted still allows nothing.
     draft = "Een reset kost €6 en duurt 60 minuten."
-    assert check(draft, ids=("F01", "F05"), covered=("F01",))["facts"] is False
+    assert check(draft, ids=("F01", "F05"), covered=("F01",))["facts"] is True
+    assert check(draft, ids=("F01",), covered=("F01",))["facts"] is False
 
 
 def test_number_words_are_checked_like_digits():
@@ -144,7 +147,8 @@ def test_entity_written_tag_is_removed_and_flagged():
 
 
 def test_model_text_in_a_note_has_no_markup_or_links():
-    out = form(summary="Refund wanted <script>alert(1)</script> see http://bad.example.com/x now")
+    text = "Refund wanted <script>alert(1)</script> see http://bad.example.com/x now"
+    out = form(summary=text, handoff_note=text)
     note = run("Ik wil mijn geld terug.", out).handoff_note
     assert "<script>" not in note and "bad.example" not in note and "Refund wanted" in note
 

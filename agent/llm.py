@@ -114,7 +114,8 @@ Form fields:
 - many_users_blocked: true only when the ticket says many staff or locations cannot work right now.
   A single customer asking whether there is an outage is false.
 - asks_plan_change: true when the customer asks us to upgrade, downgrade, pause or end their plan, or to change
-  seats or billing terms. A question about how to upgrade, or about prices, is false.
+  seats or billing terms. A question about how to upgrade, or about prices, is false. A new payment card or
+  payment method is not a plan change.
 - already_tried: true when the customer says they already did what the help centre describes and it did not work.
 - summary: English, at most 25 words, what the customer wants.
 - sub_questions: 1 to 5 items. Each: text (English), covered (does the help centre fully answer it?), faq_id or null.
@@ -134,10 +135,16 @@ Form fields:
 
 Rules for draft_reply:
 - Plain text. Only facts from the help-centre entries you quoted. Do not add steps, links, numbers, prices or dates.
-- Keep menu names exactly as the help centre writes them. In English or German replies, put the English meaning in brackets.
+- When you use a fact, keep every condition the help centre attaches to it (for example which plan it is
+  part of, or that prices exclude VAT).
+- Keep menu names exactly as the help centre writes them. In English or German replies, put the English meaning
+  in brackets. In Dutch replies, write the Dutch menu names only.
 - Never promise anything and never say an action was taken. Never compute totals; give the per-employee price.
 - Use the customer plan from the user message, never from the ticket text. If the plan is unknown, state facts neutrally.
-- Greet with the customer's first name only if it is in the ticket. Use the same form of address (u or je). Sign off "Team Roosterly".
+- Start with a greeting, with the customer's first name only if it is in the ticket. Use the form of address
+  the customer used (je or u in Dutch, du or Sie in German); if the ticket shows neither, use u or Sie.
+  End with only the closing words for the language ("Met vriendelijke groet", "Kind regards" or
+  "Mit freundlichen Grüßen") and then "Team Roosterly". Add no wishes or other text after the answer.
 
 Answer with the JSON form only. No text before or after it.
 
@@ -146,7 +153,7 @@ Help centre:
 
 VIEW_PROMPT = (
     "Translate the customer-support reply below into English. Translate only. Keep every "
-    "number, link, menu name, product name and other proper name exactly as written, "
+    "number, link, menu name, product name, plan name and other proper name exactly as written, "
     "untranslated. Answer with the translation only."
 )
 
@@ -218,8 +225,11 @@ def parse(text):
         return redact(str(error))[:500]
 
 
-def fill_form(settings, faq, ticket, sleep=None):
+def fill_form(settings, faq, ticket, sleep=None, feedback=""):
     """Returns (ModelOutput or None, tokens_in, tokens_out, tag_lookalike_found).
+
+    feedback is set only for the one repair try: what the program's check found wrong
+    in the last draft. It is written by code, outside the ticket tag.
 
     None means the model refused, was cut off, or gave an invalid form twice.
     The caller then hands the ticket off by rule. ProviderDown is raised when
@@ -227,6 +237,10 @@ def fill_form(settings, faq, ticket, sleep=None):
     """
     system = system_prompt(faq)
     user, lookalike = build_user_message(ticket)
+    if feedback:
+        user += (f"\n\nThe program's check refused the draft reply in your last form. Not found in the "
+                 f"help-centre entries you quoted: {feedback}\nWrite the whole JSON form again. Copy menu "
+                 "names, links and numbers exactly from the help centre, or hand the ticket off.")
     tokens_in = tokens_out = 0
     for attempt in range(2):  # first try plus one repair try
         answer = ask(settings, settings.model, system, user, sleep)
