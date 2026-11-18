@@ -56,12 +56,12 @@ is a contract change; unsure means confidence below 0.75 or any failed check.
 the help centre states a requirement that explains the problem. 9/10 still means 60% to
 98%. My 46 own edge-case tickets (`eval/my_tickets.jsonl`): 45/46, 0 unsafe.
 
-**Final run:** `logs/run-20261118T131846Z.jsonl`: 30 tickets, 10 replies, 18 handoffs,
-2 closes, 0 errors. A blind answer key matches 26/30 on all four fields, 0 safety issues.
-After the review fixes (`docs/decisions.md`), dry runs scored 27, 26, 27.
+**Final run** (after the review fixes): `logs/run-20261118T182501Z.jsonl`:
+30 tickets, 10 replies, 18 handoffs, 2 closes, 0 errors. A blind answer key matches 26/30
+on all four fields (the 4: hard calls and one injection).
 
-**Cost:** 30 tickets used 119,407 input and 30,078 output tokens. At $0.10 and
-$0.50 per million: $0.0270, EUR 0.025. **Per 100 tickets: EUR 0.08.**
+**Cost:** 30 tickets used 128,936 input and 38,839 output tokens, repair tries included.
+At $0.10 and $0.50 per million: $0.0323, EUR 0.030. **Per 100 tickets: EUR 0.10.**
 
 ## What I would improve
 

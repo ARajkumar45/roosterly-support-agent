@@ -69,14 +69,14 @@ Before: action 7/10. After: 9/10 in three runs.
 - A crash between "saved" and "logged" is repaired on restart: the missing log line is written.
 - The model address is fixed in code, so a shell variable cannot send the key elsewhere.
 
-## Second review (after the final run)
+## Second review (after the first final run)
 
 I asked for a check that does not trust the agent's own checks. Five reviewers worked
 separately: a blind answer key for the 30 tickets (written without seeing our decisions),
 a ticket-by-ticket comparison with it, a code review against every sentence of the brief,
 a fresh-clone test, and a literature search.
 
-**What it found in the final run.** Safety: no problems (8 of 8 must-human tickets handed
+**What it found in the first final run.** Safety: no problems (8 of 8 must-human tickets handed
 off, both injection attempts ignored, no payment details, every reply fact in the help
 centre). Against the blind key, 26 of 30 tickets match on all four fields. Two real misses:
 an English ticket about the German app was labelled `de`, and an answerable ticket was
@@ -124,6 +124,15 @@ always 8/8 must-human tickets to a human, 30/30 languages, every reason at most 
 sentences. The repair try saved a correct reply twice. What is left: two priority hard calls
 (P2 or P3, P3 or P4), and the injection ticket that goes to a human by choice.
 
+**Second final run.** Reset (the first final run's log is in
+`logs/before_reset_2026-11-18T182454Z/`), then one run with commit c608d6e:
+`logs/run-20261118T182501Z.jsonl`. 30 posted, 0 errors, 0 409s; the helpdesk matches the log
+on every ticket. Blind key: 26/30 on all four fields. The four differences are hard calls
+(two priorities P2 or P3, one category billing or question) and the injection ticket that
+goes to a human by choice. The two real misses of the first run are gone, the repair try
+saved two correct replies, all 10 replies were read against the help centre, and the rule
+checker shows 0 FAIL.
+
 ## Final run and the live session
 
 After the final run, create the file `.final_run_done` (`touch .final_run_done`). From then
@@ -148,7 +157,10 @@ accident. Delete the file before the live session, where the agent runs on new t
   helpdesk refuses the second (409). Run one at a time.
 - My own 46 test tickets were labelled with Claude Code and reviewed by me, not by a
   Dutch speaker.
-- The agent is about 1,870 lines, more than I planned. The decision step is a list of small named rules (`RULES` in `agent/decide.py`), so each rule can be read and changed on its own.
+- Every model call sends the same rules and help centre again: about 4,300 input tokens per
+  ticket, roughly 40% of the cost. Prompt caching could lower that; I have not tested it. At
+  EUR 0.10 per 100 tickets the possible saving is about EUR 0.03 per 100.
+- The agent is about 1,950 lines, more than I planned. The decision step is a list of small named rules (`RULES` in `agent/decide.py`), so each rule can be read and changed on its own.
 
 ## Questions to Nordavo
 
