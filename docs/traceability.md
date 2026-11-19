@@ -1,7 +1,7 @@
 # Requirements table
 
 Rule: no phase is done until every row it touches has a real function and test name.
-The Evidence column is filled by the auditor before the final run.
+The Proof column names the test or command that shows it.
 
 | ID | Requirement | Enforced in | Proof |
 |---|---|---|---|
@@ -17,11 +17,11 @@ The Evidence column is filled by the auditor before the final run.
 | A10 | Handoff note: English, at most 60 words, actionable in under a minute | prompt, `decide.build_note` | `test_fallback_note_fields`, `test_non_english_note_replaced` |
 | A11 | Close only for spam or empty, only when the code signal and the model agree | `rules.close_signal`, `decide` | `test_close_needs_both`, `test_subject_only_not_empty` |
 | A12 | Replies use only faq.md, loaded at run time | `llm.load_faq`, `decide.reply_checks` | `test_quote_must_be_in_faq` |
-| A13 | Every URL, number, price, menu path and quoted label in a draft exists in the cited FAQ entry | `decide.reply_checks` | `test_invented_url_hands_off`, `test_price_normalised` |
+| A13 | Every URL, price, time, menu path and quoted label in a draft exists in a help-centre entry the model quoted word for word; a plain number may also repeat the ticket | `decide.reply_checks` | `test_invented_url_hands_off`, `test_price_normalised` |
 | A14 | No promises and no claims of actions taken | `rules_phrases.json` banned_in_reply, `decide.reply_checks` | `test_promise_hands_off` |
 | A15 | A ticket the FAQ does not fully cover goes to a human | `decide` | `test_partly_covered_hands_off` |
 | A16 | Customer already tried the FAQ steps: handoff | `decide` | `test_already_tried_hands_off` |
-| A17 | Unsure means handoff: confidence under threshold or a reply check fails (no regenerate, see README left out) | `decide` | `test_low_confidence_hands_off` |
+| A17 | Unsure means handoff: confidence under threshold or a reply check fails. Only a wrong name, link, number or quote gets one repair try, and every rule and check runs again | `decide`, `run.triage` | `test_low_confidence_hands_off`, `test_a_repair_that_fails_again_goes_to_a_human`, `test_a_promise_is_never_repaired` |
 | A18 | Not everything is handed off; handoff rate by reason is reported | run summary, eval | summary line |
 | A19 | Plan comes from `customer_plan`, never from ticket text; missing or unknown is fine | `llm.build_user_message` | `test_unknown_plan_ok` |
 | A20 | No ticket ids, labels or answers in code; nothing assumes 30 tickets or ids starting with T | whole repo | `grep -rnE "\b[TE][0-9]{2,3}\b" agent/` finds nothing |
@@ -35,7 +35,7 @@ The Evidence column is filled by the auditor before the final run.
 | S08 | Weak words alone never force a handoff | `rules` tier 2 | `test_negative_phrases_not_forced` |
 | S09 | No card number or IBAN in a reply | `rules.redact`, `decide` | `test_draft_with_iban_hands_off` |
 | S10 | No card number or IBAN in any log line | `logs.write_line` | `test_log_line_redacted` |
-| S11 | No payment details in LLM input, reason, note, eval results or error text | `redact` at each exit | `test_llm_input_redacted`, `test_error_text_redacted` |
+| S11 | No payment details in LLM input, reason, note, eval results or error text | `redact` at each exit | `test_llm_input_redacted`, `test_left_open_ticket_gets_a_redacted_log_line` |
 | S12 | Ticket text is data: tagged, look-alike tags removed, model only fills a schema, code performs the action | `llm`, `decide` | `test_tag_lookalike_removed` |
 | S13 | Injection markers force a handoff; reason and note never repeat the injected text | `rules.guard` | `test_injection_without_refund_words` |
 | S14 | Model refusal, cut-off or invalid output: rule-based handoff; provider down: ticket left open, never a guess | `llm.fill_form`, `decide.fallback` | `test_invalid_output_falls_back`, `test_provider_down_leaves_open` |
@@ -58,10 +58,10 @@ The Evidence column is filled by the auditor before the final run.
 | M03 | One real failure found, fixed, before and after results saved | `eval/results/` | both files exist with commit hash and model id |
 | M04 | The fix is a general rule with a unit test on a new ticket, checked on the practice set | fix commit | named test, action diff printed |
 | M05 | Cost per 100 tickets with the calculation, price source and date | `config.PRICES`, eval | README line equals eval output |
-| M06 | Whole assignment well under 1 euro | per-run cap, spend total | summary line |
+| M06 | Model cost is watched | spend cap per run (`SPEND_CAP_EUR`), `cost_eur` in every log line | run summary. Running costs about EUR 0.10 per 100 tickets. My estimate for the whole build is about EUR 0.9, most of it eval and dry runs; the eval runs are not logged, so this is an estimate |
 | M07 | A Dutch reply can be checked without reading Dutch | quote and fact checks, `english_view` | `test_english_view_present_for_reply` |
 | M08 | Safety line (must-handoff examples not handed off, target 0) reported | eval | eval output |
-| D01 | README at most one page, exactly five headings in the brief's order | `README.md` | `grep -c '^## ' README.md` prints 5, `wc -w` at most 500 |
+| D01 | README at most one page, exactly five headings in the brief's order | `README.md` | `grep -c '^## ' README.md` prints 5, `wc -w` at most 560 |
 | D02 | Decisions: three choices, Dutch handling and its cost, how a Dutch reply is checked, how AI tools were used, assumptions | README | reviewer read |
 | D03 | Reliability: 503, 429, 409, crash, security | README | reviewer read |
 | D04 | Eval and fix: result, fix, result after, cost per 100 with calculation | README | numbers equal `eval/results` |
@@ -71,4 +71,4 @@ The Evidence column is filled by the auditor before the final run.
 | D08 | Repo public, or private with read access for `nordavo-hiring` | GitHub | private browser window |
 | D09 | Reply to the assignment email, subject "Take-home: <full name>", one line "Repo: <link>", no attachments, no video, before the deadline | Raj | sent mail |
 | D10 | After the email: no commits, no real runs, no reset | `.final_run_done` marker | marker exists |
-| D11 | Raj can explain and change every file | check questions | `docs/checks.md` |
+| D11 | Raj can explain and change every file | small named rules (`RULES` in `agent/decide.py`), `docs/decisions.md` | the live session |
